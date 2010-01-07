@@ -1,4 +1,4 @@
-(ns clj-native
+(ns clj-native.core
   (:use [clojure.contrib.seq-utils :only [indexed]])
   (:import [clojure.asm ClassVisitor MethodVisitor
             ClassWriter Opcodes]
@@ -18,8 +18,22 @@
   [#^String classname #^"[B" bytecodes]
   (.defineClass #^ClassLoader (get-root-loader) classname bytecodes))
 
+(defn word-bits
+  "Returns number of bits per machine word on current architecture."
+  []
+  (Integer/parseInt (System/getProperty "sun.arch.data.model")))
+
 (def type-map
-  {'i8 Byte/TYPE
+  {'byte Byte/TYPE
+   'short Integer/TYPE
+   'int (condp = (word-bits)
+          32 Integer/TYPE
+          64 Long/TYPE)
+   'size_t (condp = (word-bits)
+             32 Integer/TYPE
+             64 Long/TYPE)
+   'long Long/TYPE
+   'i8 Byte/TYPE
    'i16 Integer/TYPE
    'i32 Integer/TYPE
    'i64 Long/TYPE
@@ -84,6 +98,12 @@
       (.visitEnd cv)
       (.toByteArray cv))))
 
+(defn check-type
+  [t]
+  (when (not-any? #(= t %) (keys type-map))
+    (throw (Exception. (str "Unknown type: " t))))
+  t)
+
 (defn parse
   "Parses input to defclib and returns a library specification map"
   [lib & body]
@@ -109,8 +129,8 @@
               (when-not (vector? argvec)
                 (throw (Exception. (str "argument vector missing: " fdef))))
               {:name (clojure.core/name name)
-               :rettype (or rettype 'void)
-               :argtypes argvec ;; TODO: check that all types are valid
+               :rettype (check-type (or rettype 'void))
+               :argtypes (vec (for [a argvec] (check-type a)))
                :doc doc
                :cljname cljname})))]
     {:lib lib
@@ -139,7 +159,7 @@
 (defn clj-stub
   "Creates a stub clojure function that will load library on demand
   and replace itself with a version that calls the library function."
-  [m n args lib loadfn]
+  [m n native args lib loadfn]
   (let [clsname (str (:pkg lib) \. (:classname lib))]
     `(do
        (try
@@ -154,10 +174,11 @@
        (eval ~(list 'quote
                     (list 'def (with-meta n m)
                           (list `fn (vec args)
-                                (list* (symbol (str clsname \/ n)) args)))))
+                                (list* (symbol (str clsname \/ native)) args)))))
        ;; call new version of self
        ~(list* n args))))
 
+;; TODO: type tags and arglists in meta, also type tags on arguments
 (defn make-clj-stubs
   "Creates clojure function stubs that will load the library on
   demand and replace themselves with versions that only call the
@@ -167,9 +188,13 @@
     (let [m (if (:doc fdef)
               {:doc (:doc fdef)}
               {})
+          m (if (not= (:rettype fdef) 'void)
+              (assoc m :tag (type-map (:rettype fdef)))
+              m)
+          m (assoc m :arglists (list 'quote (list (:argtypes fdef))))
           n (:cljname fdef)
           args (argnames (:argtypes fdef))
-          fdecl (clj-stub m n args libspec loadfn)]
+          fdecl (clj-stub m n (:name fdef) args libspec loadfn)]
       (list 'def (with-meta n m)
             (list `fn (vec args) fdecl)))))
 
