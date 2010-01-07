@@ -174,11 +174,11 @@
        (eval ~(list 'quote
                     (list 'def (with-meta n m)
                           (list `fn (vec args)
-                                (list* (symbol (str clsname \/ native)) args)))))
+                                (list* (symbol (str clsname \/ native))
+                                       args)))))
        ;; call new version of self
        ~(list* n args))))
 
-;; TODO: type tags and arglists in meta, also type tags on arguments
 (defn make-clj-stubs
   "Creates clojure function stubs that will load the library on
   demand and replace themselves with versions that only call the
