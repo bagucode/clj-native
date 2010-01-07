@@ -15,7 +15,8 @@ Clojure library for generating JNA direct mappings
 
 ## Installation
 
+    
 
 ## License
 
-
+    Eclipse public license version 1.0. See epl-v10.html for details.
