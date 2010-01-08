@@ -229,7 +229,7 @@
        ;; Have to use eval because the class name is only known
        ;; by class loaders at runtime after loadfn has run
        ;; TODO: special handling of types that need conversion
-       ;; such as NativeLong and Buffer return values
+       ;; such as NativeLong?
        (eval ~(list 'quote
                     (list 'def (with-meta n m)
                           (list `fn (vec args)
