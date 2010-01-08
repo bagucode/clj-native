@@ -307,7 +307,7 @@
 
 (comment
 
-  (use ['clj-native.core :only defclib])
+  (use ['clj-native.core :only ['defclib]])
   (import 'com.sun.jna.NativeLong)
 
   (defclib
