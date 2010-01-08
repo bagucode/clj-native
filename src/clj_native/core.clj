@@ -26,6 +26,22 @@
   [#^String classname #^"[B" bytecodes]
   (.defineClass #^ClassLoader (get-root-loader) classname bytecodes))
 
+(defn native-long
+  "Returns the java type corresponding to
+  the bitsize of a native long."
+  []
+  (condp = com.sun.jna.NativeLong/SIZE
+    4 Integer/TYPE
+    8 Long/TYPE))
+
+(defn native-long-buffer
+  "Returns the type of nio buffer appropriate
+  to store arrays of native longs."
+  []
+  (condp = com.sun.jna.NativeLong/SIZE
+    4 java.nio.IntBuffer
+    8 java.nio.LongBuffer))
+
 (def type-map
      {'char Byte/TYPE
       'wchar_t Character/TYPE
@@ -35,8 +51,8 @@
       'enum Integer/TYPE
       'BOOL Boolean/TYPE
       'bool Boolean/TYPE
-      'size_t com.sun.jna.NativeLong
-      'long com.sun.jna.NativeLong
+      'size_t native-long
+      'long native-long
       'longlong Long/TYPE
       '__int64 Long/TYPE
       'i8 Byte/TYPE
@@ -55,12 +71,8 @@
       'short* java.nio.ShortBuffer
       'int* java.nio.IntBuffer
       ;; Must delay this until runtime so put it in a function
-      'long* (fn [] (condp = com.sun.jna.NativeLong/SIZE
-                      4 java.nio.IntBuffer
-                      8 java.nio.LongBuffer))
-      'size_t* (fn [] (condp = com.sun.jna.NativeLong/SIZE
-                      4 java.nio.IntBuffer
-                      8 java.nio.LongBuffer))
+      'long* native-long-buffer
+      'size_t* native-long-buffer
       'longlong* java.nio.LongBuffer
       '__int64* java.nio.LongBuffer
       'i8* java.nio.ByteBuffer
@@ -230,8 +242,7 @@
            (catch LinkageError le#))))
        ;; Have to use eval because the class name is only known
        ;; by class loaders at runtime after loadfn has run
-       ;; TODO: special handling of types that need conversion
-       ;; such as NativeLong?
+       ;; TODO: special handling of types that need conversion?
        (eval
         ~(list 'quote
                (list 'let [v `(ns-resolve '~ns '~n)]
@@ -329,17 +340,14 @@
     (free [void*])
     (memset [byte* int size_t] void*))
 
-  ;; At the moment NativeLongs have to be explicitly constructed.
-  ;; I have a plan to get rid of that and other such type issues.
-
-  (def mem (malloc (NativeLong. 100)))
+  (def mem (malloc 100))
   (def view (.getByteBuffer mem 0 100))
-  (memset view 10 (NativeLong. 100))
+  (memset view 10 100)
   (.get view 20) ;; => 10
   (def int-view (.asIntBuffer view)) ;; 25 ints (100/4)
-  (memset view 1 (NativeLong. 100))
+  (memset view 1 100)
   (.get int-view 20) ;; => 16843009 (four bytes, each with their lsb set)
   (free mem) ;; => nil
-  (.get int-vew 0) ;; => 0
+  (.get int-view 0) ;; => Undefined. Don't use freed memory ;)
 
 )
