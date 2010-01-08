@@ -26,34 +26,70 @@
   [#^String classname #^"[B" bytecodes]
   (.defineClass #^ClassLoader (get-root-loader) classname bytecodes))
 
-(defn word-bits
-  "Returns number of bits per machine word on current architecture."
-  []
-  (Integer/parseInt (System/getProperty "sun.arch.data.model")))
-
 (def type-map
-  {'byte Byte/TYPE
-   'short Integer/TYPE
-   'int (condp = (word-bits)
-          32 Integer/TYPE
-          64 Long/TYPE)
-   'size_t (condp = (word-bits)
-             32 Integer/TYPE
-             64 Long/TYPE)
-   'long Long/TYPE
-   'i8 Byte/TYPE
-   'i16 Integer/TYPE
-   'i32 Integer/TYPE
-   'i64 Long/TYPE
-   'float Float/TYPE
-   'double Double/TYPE
-   'pointer com.sun.jna.Pointer
-   'void Void/TYPE})
+     {'char Byte/TYPE
+      'wchar_t Character/TYPE
+      'byte Byte/TYPE
+      'short Short/TYPE
+      'int Integer/TYPE
+      'enum Integer/TYPE
+      'BOOL Boolean/TYPE
+      'bool Boolean/TYPE
+      'size_t com.sun.jna.NativeLong
+      'long com.sun.jna.NativeLong
+      'longlong Long/TYPE
+      '__int64 Long/TYPE
+      'i8 Byte/TYPE
+      'i16 Short/TYPE
+      'i32 Integer/TYPE
+      'i64 Long/TYPE
+      'float Float/TYPE
+      'double Double/TYPE
+      'void Void/TYPE
+      'void* com.sun.jna.Pointer
+      'byte* java.nio.ByteBuffer
+      'char* java.nio.ByteBuffer
+      'constchar* String
+      'wchar_t* java.nio.CharBuffer
+      'constwchar_t* com.sun.jna.WString
+      'short* java.nio.ShortBuffer
+      'int* java.nio.IntBuffer
+      ;; Must delay this until runtime so put it in a function
+      'long* (fn [] (condp = com.sun.jna.NativeLong/SIZE
+                      4 java.nio.IntBuffer
+                      8 java.nio.LongBuffer))
+      'size_t* (fn [] (condp = com.sun.jna.NativeLong/SIZE
+                      4 java.nio.IntBuffer
+                      8 java.nio.LongBuffer))
+      'longlong* java.nio.LongBuffer
+      '__int64* java.nio.LongBuffer
+      'i8* java.nio.ByteBuffer
+      'i16* java.nio.ShortBuffer
+      'i32* java.nio.IntBuffer
+      'i64* java.nio.LongBuffer
+      'float* java.nio.FloatBuffer
+      'double* java.nio.DoubleBuffer
+      'char** (class (make-array String 0))
+      'wchar_t** (class (make-array com.sun.jna.WString 0))
+      'void** (class (make-array com.sun.jna.Pointer 0))
+      'struct com.sun.jna.Structure
+      'struct* com.sun.jna.Structure
+      'union com.sun.jna.Union
+      ;; No idea how anyone will ever be able to write struct[] :)
+      (symbol "struct[]") (class (make-array com.sun.jna.Structure 0))
+      'fn com.sun.jna.Callback
+      'fn* com.sun.jna.Callback
+      'function com.sun.jna.Callback
+      'function* com.sun.jna.Callback
+      'callback com.sun.jna.Callback
+      'callback* com.sun.jna.Callback})
 
 (defn descriptor
-  "Get internal name type descriptor for class"
-  [#^Class clazz]
-  (clojure.asm.Type/getDescriptor clazz))
+  "Get internal name type descriptor for t"
+  [t]
+  (cond
+   (class? t) (clojure.asm.Type/getDescriptor t)
+   (fn? t) (clojure.asm.Type/getDescriptor (t))))
 
 (defn make-native-func
   "Create a static method stub for a native function"
@@ -179,6 +215,8 @@
            (catch LinkageError le#))))
        ;; Have to use eval because the class name is only known
        ;; by class loaders at runtime after loadfn has run
+       ;; TODO: special handling of types that need conversion
+       ;; such as NativeLong and Buffer return values
        (eval ~(list 'quote
                     (list 'def (with-meta n m)
                           (list `fn (vec args)
