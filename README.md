@@ -1,6 +1,7 @@
 # clj-native
 
-Clojure library for generating JNA direct mappings
+Clojure library for generating JNA direct mappings.
+
 From the doc of defclib:
 
     -------------------------
@@ -76,8 +77,8 @@ From the doc of defclib:
 
 ## Caveats
 
-Currenty it is not possible to use char** (String[]), wchar_t** (WString[]),
-void** (Pointer[]) or varargs (Object[]) as function arguments since JNA
+Currenty it is not possible to use char\*\* (String[]), wchar_t\*\* (WString[]),
+void\*\* (Pointer[]) or varargs (Object[]) as function arguments since JNA
 direct mapping does not support this. If a need arises (I'm thinking mostly
 of varargs since the others can be simulated in other ways) I might look at
 adding support for non-direct mappings for functions that need these
