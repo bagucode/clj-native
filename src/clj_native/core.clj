@@ -69,14 +69,17 @@
       'i64* java.nio.LongBuffer
       'float* java.nio.FloatBuffer
       'double* java.nio.DoubleBuffer
-      'char** (class (make-array String 0))
-      'wchar_t** (class (make-array com.sun.jna.WString 0))
-      'void** (class (make-array com.sun.jna.Pointer 0))
+      ;; the types below are not yet supported using direct mapping in jna
+      ;;       'char** (class (make-array String 0))
+      ;;       'wchar_t** (class (make-array com.sun.jna.WString 0))
+      ;;       'void** (class (make-array com.sun.jna.Pointer 0))
       'struct com.sun.jna.Structure
       'struct* com.sun.jna.Structure
       'union com.sun.jna.Union
       ;; No idea how anyone will ever be able to write struct[] :)
       (symbol "struct[]") (class (make-array com.sun.jna.Structure 0))
+      'structs (class (make-array com.sun.jna.Structure 0))
+      'struct-array (class (make-array com.sun.jna.Structure 0))
       'fn com.sun.jna.Callback
       'fn* com.sun.jna.Callback
       'function com.sun.jna.Callback
@@ -172,6 +175,16 @@
                         (str "expected symbol as function name: " fdef))))
               (when-not (vector? argvec)
                 (throw (Exception. (str "argument vector missing: " fdef))))
+              ;; Can't support Buffers as return types since there is no way
+              ;; of knowing the size of the returned memory block.
+              ;; User must manually use the .asByteBuffer of the Pointer class.
+              (when (and rettype
+                         (.endsWith (str rettype) "*")
+                         (not= 'void* rettype))
+                (throw (Exception.
+                        (str
+                         "typed pointers are not supported as return types: "
+                         fdef))))
               {:name (clojure.core/name name)
                :rettype (check-type (or rettype 'void))
                :argtypes (vec (for [a argvec] (check-type a)))
@@ -249,8 +262,6 @@
 
 (defmacro defclib
   "Create C library bindings.
-  Only functions are supported at this time (structs and unions
-  may be handled as opaque pointers).
   lib is a symbol naming the native library to link eg. 'c' for
   linking against the standard C runtime.
   body is any number of function descriptions of the form:
@@ -275,6 +286,13 @@
   Because of this black magic self-replacement and the loading
   of the native library, it will probably break things horribly
   if any of the functions are called during compile time.
+  This can also cause trouble if the functions are used as
+  arguments to higher order functions since the replacement
+  only modifies the function's var. That means that any reference
+  directly to the function (such as a local in another function)
+  will not be updated. It is therefore best not to use the
+  functions as arguments to higher order functions until after
+  they have been called at least once.
   You have been warned."
   [lib & body]
   (let [lib (apply parse lib body)
