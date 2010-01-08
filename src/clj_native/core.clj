@@ -319,7 +319,6 @@
 (comment
 
   (use ['clj-native.core :only ['defclib]])
-  (import 'com.sun.jna.NativeLong)
 
   (defclib
     m

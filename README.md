@@ -5,7 +5,6 @@ Clojure library for generating JNA direct mappings
 ## Usage
 
     (use ['clj-native.core :only ['defclib]])
-    (import 'com.sun.jna.NativeLong)
 
     (defclib
       m
