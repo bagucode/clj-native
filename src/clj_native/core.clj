@@ -70,7 +70,6 @@
       'constwchar_t* com.sun.jna.WString
       'short* java.nio.ShortBuffer
       'int* java.nio.IntBuffer
-      ;; Must delay this until runtime so put it in a function
       'long* native-long-buffer
       'size_t* native-long-buffer
       'longlong* java.nio.LongBuffer
@@ -129,7 +128,7 @@
     (let [#^ClassVisitor cv (clojure.asm.ClassWriter. 0)]
       (.visit cv Opcodes/V1_5 Opcodes/ACC_PUBLIC
               (str pkg \/ name)
-              nil "java/lang/Object", (make-array String 0))
+              nil "java/lang/Object" (make-array String 0))
       ;; Class static block, must call Native.register here
       (doto #^MethodVisitor (.visitMethod cv Opcodes/ACC_STATIC
                                           "<clinit>" "()V" nil nil)
