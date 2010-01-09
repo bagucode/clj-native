@@ -9,8 +9,12 @@
 (ns clj-native.core
   (:use [clojure.contrib.seq-utils :only [indexed]])
   (:import [clojure.asm ClassVisitor MethodVisitor
-            ClassWriter Opcodes]
-           [java.util UUID]))
+            ClassWriter Opcodes Type]
+           [java.util UUID]
+           [java.nio ByteBuffer IntBuffer CharBuffer
+            ShortBuffer LongBuffer FloatBuffer DoubleBuffer]
+           [com.sun.jna Native Library NativeLong
+            Pointer WString Structure Union Callback]))
 
 (defn get-root-loader
   "Gets the root DynamicClassLoader"
@@ -30,7 +34,7 @@
   "Returns the java type corresponding to
   the bitsize of a native long."
   []
-  (condp = com.sun.jna.NativeLong/SIZE
+  (condp = NativeLong/SIZE
     4 Integer/TYPE
     8 Long/TYPE))
 
@@ -38,9 +42,9 @@
   "Returns the type of nio buffer appropriate
   to store arrays of native longs."
   []
-  (condp = com.sun.jna.NativeLong/SIZE
-    4 java.nio.IntBuffer
-    8 java.nio.LongBuffer))
+  (condp = NativeLong/SIZE
+    4 IntBuffer
+    8 LongBuffer))
 
 (def type-map
      {'char Byte/TYPE
@@ -62,48 +66,44 @@
       'float Float/TYPE
       'double Double/TYPE
       'void Void/TYPE
-      'void* com.sun.jna.Pointer
-      'byte* java.nio.ByteBuffer
-      'char* java.nio.ByteBuffer
+      'void* Pointer
+      'byte* ByteBuffer
+      'char* ByteBuffer
       'constchar* String
-      'wchar_t* java.nio.CharBuffer
-      'constwchar_t* com.sun.jna.WString
-      'short* java.nio.ShortBuffer
-      'int* java.nio.IntBuffer
+      'wchar_t* CharBuffer
+      'constwchar_t* WString
+      'short* ShortBuffer
+      'int* IntBuffer
       'long* native-long-buffer
       'size_t* native-long-buffer
-      'longlong* java.nio.LongBuffer
-      '__int64* java.nio.LongBuffer
-      'i8* java.nio.ByteBuffer
-      'i16* java.nio.ShortBuffer
-      'i32* java.nio.IntBuffer
-      'i64* java.nio.LongBuffer
-      'float* java.nio.FloatBuffer
-      'double* java.nio.DoubleBuffer
-      ;; the types below are not yet supported using direct mapping in jna
-      ;;       'char** (class (make-array String 0))
-      ;;       'wchar_t** (class (make-array com.sun.jna.WString 0))
-      ;;       'void** (class (make-array com.sun.jna.Pointer 0))
-      'struct com.sun.jna.Structure
-      'struct* com.sun.jna.Structure
-      'union com.sun.jna.Union
+      'longlong* LongBuffer
+      '__int64* LongBuffer
+      'i8* ByteBuffer
+      'i16* ShortBuffer
+      'i32* IntBuffer
+      'i64* LongBuffer
+      'float* FloatBuffer
+      'double* DoubleBuffer
+      'struct Structure
+      'struct* Structure
+      'union Union
       ;; No idea how anyone will ever be able to write struct[] :)
-      (symbol "struct[]") (class (make-array com.sun.jna.Structure 0))
-      'structs (class (make-array com.sun.jna.Structure 0))
-      'struct-array (class (make-array com.sun.jna.Structure 0))
-      'fn com.sun.jna.Callback
-      'fn* com.sun.jna.Callback
-      'function com.sun.jna.Callback
-      'function* com.sun.jna.Callback
-      'callback com.sun.jna.Callback
-      'callback* com.sun.jna.Callback})
+      (symbol "struct[]") (class (make-array Structure 0))
+      'structs (class (make-array Structure 0))
+      'struct-array (class (make-array Structure 0))
+      'fn Callback
+      'fn* Callback
+      'function Callback
+      'function* Callback
+      'callback Callback
+      'callback* Callback})
 
 (defn descriptor
   "Get internal name type descriptor for t"
   [t]
   (cond
-   (class? t) (clojure.asm.Type/getDescriptor t)
-   (fn? t) (clojure.asm.Type/getDescriptor (t))))
+   (class? t) (Type/getDescriptor t)
+   (fn? t) (Type/getDescriptor (t))))
 
 (defn make-native-func
   "Create a static method stub for a native function"
@@ -125,7 +125,7 @@
                   :name lib}
         opts (merge defaults (apply array-map options))
         {:keys [pkg name]} opts]
-    (let [#^ClassVisitor cv (clojure.asm.ClassWriter. 0)]
+    (let [#^ClassVisitor cv (ClassWriter. 0)]
       (.visit cv Opcodes/V1_5 Opcodes/ACC_PUBLIC
               (str pkg \/ name)
               nil "java/lang/Object" (make-array String 0))
@@ -188,7 +188,7 @@
                 (throw (Exception. (str "argument vector missing: " fdef))))
               ;; Can't support Buffers as return types since there is no way
               ;; of knowing the size of the returned memory block.
-              ;; User must manually use the .asByteBuffer of the Pointer class.
+              ;; User must manually use the .getByteBuffer of the Pointer class.
               (when (and rettype
                          (.endsWith (str rettype) "*")
                          (not= 'void* rettype))
@@ -213,52 +213,43 @@
   (for [[i t] (indexed argtypes)]
     (symbol (str t i))))
 
-(defn load-fn
-  "Generates code for a function that loads a native library."
+(defn loadlib-fn
+  "Creates a function body that will load a native library
+  and replace all the mapped function stubs with real versions."
   [lib]
   (let [clsname (str (:pkg lib) \. (:classname lib))]
-    `(fn [] (load-code ~clsname
-                       (make-native-lib-stub
-                        ~(name (:lib lib))
-                        '~(:fns lib)
-                        :name '~(:classname lib)
-                        :pkg '~(:pkg lib))))))
-
-(defn clj-stub
-  "Creates a stub clojure function that will load library on demand
-  and replace itself with a version that calls the library function."
-  [m n native args lib loadfn]
-  (let [clsname (str (:pkg lib) \. (:classname lib))
-        ns (ns-name *ns*)
-        v (gensym)] ;; function var
     `(do
-       (try
-        (Class/forName ~clsname)
-        (catch ClassNotFoundException cnfe#
-          (try
-           (~loadfn)
-           ;; LinkageError happens if the class is already loaded.
-           (catch LinkageError le#))))
-       ;; Have to use eval because the class name is only known
-       ;; by class loaders at runtime after loadfn has run
-       ;; TODO: special handling of types that need conversion?
-       (eval
-        ~(list 'quote
-               (list 'let [v `(ns-resolve '~ns '~n)]
-                     `(.bindRoot
-                       ~v
-                       ~(list `fn (vec args)
-                              (list* (symbol (str clsname \/ native))
-                                     args))))))
-       ;; call new version of self
-       ~(list* n args))))
+       ;; Try to load the native library before creating and
+       ;; loading the JNA class because we want to discover the
+       ;; error of not finding the library file here rather than
+       ;; in the static class initializer.
+       (Native/loadLibrary ~(name (:lib lib)) Library)
+       (load-code ~clsname
+                  (make-native-lib-stub
+                   ~(name (:lib lib))
+                   '~(:fns lib)
+                   :name '~(:classname lib)
+                   :pkg '~(:pkg lib)))
+       ~@(for [fdef (:fns lib)]
+           (let [native (:name fdef)
+                 name (:cljname fdef)
+                 args (vec (argnames (:argtypes fdef)))
+                 ns (ns-name *ns*)
+                 v (gensym)]
+             `(eval
+               ~(list 'quote
+                      (list 'let [v `(ns-resolve '~ns '~name)]
+                            `(.bindRoot
+                              ~v
+                              ~(list `fn args
+                                     (list* (symbol (str clsname \/ native))
+                                            args)))))))))))
 
 (defn make-clj-stubs
-  "Creates clojure function stubs that will load the library on
-  demand and replace themselves with versions that only call the
-  library functions."
-  [libspec loadfn]
-  (for [fdef (:fns libspec)]
+  "Creates stub functions for linking against before the native
+  library has been loaded."
+  [lib]
+  (for [fdef (:fns lib)]
     (let [m (if (:doc fdef)
               {:doc (:doc fdef)}
               {})
@@ -268,9 +259,9 @@
           m (assoc m :arglists (list 'quote (list (:argtypes fdef))))
           n (:cljname fdef)
           args (argnames (:argtypes fdef))
-          fdecl (clj-stub m n (:name fdef) args libspec loadfn)]
+          msg (str "Must call loadlib-" (:lib lib) " before this function")]
       (list 'def (with-meta n m)
-            (list `fn (vec args) fdecl)))))
+            (list `fn (vec args) `(throw (Exception. ~msg)))))))
 
 ;; --------------- PUBLIC INTERFACE ---------------
 ;; Use other stuff at own peril
@@ -294,26 +285,21 @@
   prefixes used by C libraries to ensure unique names.
 
   This macro will create clojure functions in the current
-  namespace corresponding to the imported C functions. The first
-  time these functions are called they will dynamically load
-  the C library and then replace themselves with versions that
-  simply call their C library namesakes.
-  Because of this black magic self-replacement and the loading
-  of the native library, it will probably break things horribly
-  if any of the functions are called during compile time.
-  This can also cause trouble if the functions are used as
-  arguments to higher order functions since the replacement
-  only modifies the function's var. That means that any reference
-  directly to the function (such as a local in another function)
-  will not be updated. It is therefore best not to use the
-  functions as arguments to higher order functions until after
-  they have been called at least once.
-  You have been warned."
+  namespace corresponding to the imported C functions.
+  A function called loadlib-libname will also be created where
+  libname is the name of the native library. This function
+  dynamically loads the native library and must be called at
+  runtime (eg. at the top of -main) before using any of the
+  mapped functions."
   [lib & body]
-  (let [lib (apply parse lib body)
-        loadfn (gensym "loadfn")]
-    `(let [~loadfn ~(load-fn lib)]
-       ~@(make-clj-stubs lib loadfn))))
+  (let [lib (apply parse lib body)]
+    `(do
+       (defn ~(symbol (str "loadlib-" (:lib lib)))
+         ~(str "Loads the native library " (:lib lib)
+               "\n  and rebinds the var roots of all it's mapped"
+               "\n  functions to call their native counterparts.")
+         [] ~(loadlib-fn lib))
+       ~@(make-clj-stubs lib))))
 
 (comment
 
@@ -323,6 +309,8 @@
     m
     (sin [double] double)
     (cos [double] double))
+
+  (loadlib-m)
 
   (sin 1) ;; => 0.8414709848078965
 
@@ -337,6 +325,8 @@
     (malloc [size_t] void*)
     (free [void*])
     (memset [byte* int size_t] void*))
+
+  (loadlib-c)
 
   (def mem (malloc 100))
   (def view (.getByteBuffer mem 0 100))

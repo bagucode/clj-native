@@ -26,21 +26,12 @@ From the doc of defclib:
       prefixes used by C libraries to ensure unique names.
 
       This macro will create clojure functions in the current
-      namespace corresponding to the imported C functions. The first
-      time these functions are called they will dynamically load
-      the C library and then replace themselves with versions that
-      simply call their C library namesakes.
-      Because of this black magic self-replacement and the loading
-      of the native library, it will probably break things horribly
-      if any of the functions are called during compile time.
-      This can also cause trouble if the functions are used as
-      arguments to higher order functions since the replacement
-      only modifies the function's var. That means that any reference
-      directly to the function (such as a local in another function)
-      will not be updated. It is therefore best not to use the
-      functions as arguments to higher order functions until after
-      they have been called at least once.
-      You have been warned.
+      namespace corresponding to the imported C functions.
+      A function called loadlib-libname will also be created where
+      libname is the name of the native library. This function
+      dynamically loads the native library and must be called at
+      runtime (eg. at the top of -main) before using any of the
+      mapped functions.
 
 ## Usage
 
@@ -50,6 +41,8 @@ From the doc of defclib:
       m
       (sin [double] double)
       (cos [double] double))
+
+    (loadlib-m)
 
     (sin 1) ;; => 0.8414709848078965
 
@@ -64,6 +57,8 @@ From the doc of defclib:
       (malloc [size_t] void*)
       (free [void*])
       (memset [byte* int size_t] void*))
+
+    (loadlib-c)
 
     (def mem (malloc 100))
     (def view (.getByteBuffer mem 0 100))
