@@ -121,19 +121,19 @@
 (defn make-native-lib-stub
   "Create the class needed for JNA direct mapping."
   [lib fn-descriptors & options]
-  (let [defaults {:pkg (.replaceAll (name (ns-name *ns*)) "-" "_")
+  (let [defaults {:pkg (.replaceAll (str (ns-name *ns*)) "-" "_")
                   :name lib}
         opts (merge defaults (apply array-map options))
         {:keys [pkg name]} opts]
     (let [#^ClassVisitor cv (ClassWriter. 0)]
       (.visit cv Opcodes/V1_5 Opcodes/ACC_PUBLIC
-              (str pkg \/ name)
+              (.replaceAll (str pkg \/ name) "\\." "/")
               nil "java/lang/Object" (make-array String 0))
       ;; Class static block, must call Native.register here
       (doto #^MethodVisitor (.visitMethod cv Opcodes/ACC_STATIC
                                           "<clinit>" "()V" nil nil)
         (.visitCode)
-        (.visitLdcInsn (if (string? lib) lib (name lib)))
+        (.visitLdcInsn (if (string? lib) lib (str lib)))
         (.visitMethodInsn Opcodes/INVOKESTATIC "com/sun/jna/Native"
                           "register" "(Ljava/lang/String;)V")
         (.visitInsn Opcodes/RETURN)
@@ -155,6 +155,42 @@
       ;; All done
       (.visitEnd cv)
       (.toByteArray cv))))
+
+(defn make-callback-interface
+  "Creates a java interface for a C callback specification."
+  [clsname cbspec]
+  (let [#^ClassVisitor cv (ClassWriter. 0)]
+    (.visit cv Opcodes/V1_5
+            (+ Opcodes/ACC_PUBLIC Opcodes/ACC_ABSTRACT Opcodes/ACC_INTERFACE)
+            clsname nil "java/lang/Object"
+            (into-array String ["com/sun/jna/Callback"]))
+    (let [rettype  (type-map (:rettype cbspec))
+          argtypes (map type-map (:argtypes cbspec))
+          opcodes (+ Opcodes/ACC_PUBLIC Opcodes/ACC_ABSTRACT)
+          desc (str "(" (apply str (map descriptor argtypes))
+                    ")" (descriptor rettype))]
+      (-> cv
+          (.visitMethod (int opcodes) "invoke" desc nil nil)
+          (.visitEnd)))
+    (.visitEnd cv)
+    (.toByteArray cv)))
+
+(defn make-callback-constructor
+  "Creates code for creating a constructor
+  function for a given callback."
+  [clsname cbspec]
+  (let [args (take (count (:argtypes cbspec)) (repeatedly gensym))]
+    `(defn ~(symbol (str "make-" (:name cbspec)))
+       ~(str "Creates a new callback proxy object of type\n  "
+             (:name cbspec) " that will delegate to the supplied clojure\n"
+             "  function when it is called from native code.\n"
+             "  The clojure function must take " (count (:argtypes cbspec))
+             " arguments\n  and return an object"
+             " of type " (type-map (:rettype cbspec)))
+       [~'f]
+       (proxy [~clsname] []
+         (~'invoke ~(vec args)
+                 (~'f ~@args))))))
 
 (defn check-type
   [t]
@@ -196,14 +232,14 @@
                         (str
                          "typed pointers are not supported as return types: "
                          fdef))))
-              {:name (clojure.core/name name)
+              {:name (str name)
                :rettype (check-type (or rettype 'void))
                :argtypes (vec (for [a argvec] (check-type a)))
                :doc doc
                :cljname cljname})))]
     {:lib lib
      :fns functions
-     :pkg (symbol (.replaceAll (name (ns-name *ns*)) "-" "_"))
+     :pkg (symbol (.replaceAll (str (ns-name *ns*)) "-" "_"))
      :classname (symbol (.replaceAll
                          (str "clj_native_" (UUID/randomUUID)) "-" "_"))}))
 
@@ -223,10 +259,10 @@
        ;; loading the JNA class because we want to discover the
        ;; error of not finding the library file here rather than
        ;; in the static class initializer.
-       (Native/loadLibrary ~(name (:lib lib)) Library)
+       (Native/loadLibrary ~(str (:lib lib)) Library)
        (load-code ~clsname
                   (make-native-lib-stub
-                   ~(name (:lib lib))
+                   ~(str (:lib lib))
                    '~(:fns lib)
                    :name '~(:classname lib)
                    :pkg '~(:pkg lib)))

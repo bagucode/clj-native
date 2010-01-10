@@ -39,8 +39,9 @@ From the doc of defclib:
 
     (defclib
       m
-      (sin [double] double)
-      (cos [double] double))
+      (:functions
+       (sin [double] double)
+       (cos [double] double)))
 
     (loadlib-m)
 
@@ -54,9 +55,10 @@ From the doc of defclib:
 
     (defclib
       c
-      (malloc [size_t] void*)
-      (free [void*])
-      (memset [byte* int size_t] void*))
+      (:functions
+       (malloc [size_t] void*)
+       (free [void*])
+       (memset [byte* int size_t] void*)))
 
     (loadlib-c)
 
