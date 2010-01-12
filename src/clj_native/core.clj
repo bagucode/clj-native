@@ -92,11 +92,7 @@
       'structs (class (make-array Structure 0))
       'struct-array (class (make-array Structure 0))
       'fn Callback
-      'fn* Callback
-      'function Callback
-      'function* Callback
-      'callback Callback
-      'callback* Callback})
+      'callback Callback})
 
 (defn descriptor
   "Get internal name type descriptor for t"
@@ -158,11 +154,11 @@
 
 (defn make-callback-interface
   "Creates a java interface for a C callback specification."
-  [clsname cbspec]
+  [cbspec]
   (let [#^ClassVisitor cv (ClassWriter. 0)]
     (.visit cv Opcodes/V1_5
             (+ Opcodes/ACC_PUBLIC Opcodes/ACC_ABSTRACT Opcodes/ACC_INTERFACE)
-            clsname nil "java/lang/Object"
+            (.replaceAll (:classname cbspec) "\\." "/") nil "java/lang/Object"
             (into-array String ["com/sun/jna/Callback"]))
     (let [rettype  (type-map (:rettype cbspec))
           argtypes (map type-map (:argtypes cbspec))
@@ -175,22 +171,39 @@
     (.visitEnd cv)
     (.toByteArray cv)))
 
+(defn make-callback-constructor-stubs
+  "Creates stub functions for callback constructors."
+  [lib]
+  (let [ns (ns-name *ns*)
+        msg (str "Must call loadlib-" (:lib lib) " before this function")]
+    (for [cbspec (:cbs lib)]
+      (let [name (symbol (str "make-" (:name cbspec)))]
+        `(defn ~name
+           ~(str "Creates a new callback proxy object of type\n  "
+                 (:name cbspec) " that will delegate to the supplied clojure\n"
+                 "  function when it is called from native code.\n"
+                 "  The clojure function must take " (count (:argtypes cbspec))
+                 " arguments\n  and return an object"
+                 " of type " (type-map (:rettype cbspec)))
+           [~'f] (throw (Exception. ~msg)))))))
+
 (defn make-callback-constructor
   "Creates code for creating a constructor
   function for a given callback."
-  [clsname cbspec]
-  (let [args (take (count (:argtypes cbspec)) (repeatedly gensym))]
-    `(defn ~(symbol (str "make-" (:name cbspec)))
-       ~(str "Creates a new callback proxy object of type\n  "
-             (:name cbspec) " that will delegate to the supplied clojure\n"
-             "  function when it is called from native code.\n"
-             "  The clojure function must take " (count (:argtypes cbspec))
-             " arguments\n  and return an object"
-             " of type " (type-map (:rettype cbspec)))
-       [~'f]
-       (proxy [~clsname] []
-         (~'invoke ~(vec args)
-                 (~'f ~@args))))))
+  [cbspec]
+  (let [args (take (count (:argtypes cbspec)) (repeatedly gensym))
+        ns (ns-name *ns*)
+        name (symbol (str "make-" (:name cbspec)))
+        v (gensym)]
+    `(eval
+      ~(list 'quote
+             `(let [~v (ns-resolve '~ns '~name)]
+                (.bindRoot
+                 ~v
+                 (fn [~'f]
+                   (proxy [~(symbol (:classname cbspec))] []
+                     (~'invoke ~(vec args)
+                               (~'f ~@args))))))))))
 
 (defn check-type
   [t]
@@ -198,46 +211,72 @@
     (throw (Exception. (str "Unknown type: " t))))
   t)
 
+(defn parse-functions
+  [fns]
+  (let [third (fn [coll] (first (next (next coll))))
+        drop-until (fn [pred coll] (drop-while #(not (pred %)) coll))]
+    (for [fdef fns]
+      (if-not (list? fdef)
+        (throw (Exception. (str "invalid function description: " fdef)))
+        (let [name (first fdef)
+              doc (when (string? (second fdef)) (second fdef))
+              cljname (cond (symbol? (second fdef)) (second fdef)
+                            (and (string? (second fdef))
+                                 (symbol? (third fdef))) (third fdef)
+                            :else name)
+              argvec (first (drop-until #(vector? %) fdef))
+              rettype (second (drop-until #(vector? %) fdef))]
+          (when-not (symbol? name)
+            (throw (Exception.
+                    (str "expected symbol as function name: " fdef))))
+          (when-not (vector? argvec)
+            (throw (Exception. (str "argument vector missing: " fdef))))
+          ;; Can't support Buffers as return types since there is no way
+          ;; of knowing the size of the returned memory block.
+          ;; User must manually use the .getByteBuffer of the Pointer class.
+          (when (and rettype
+                     (.endsWith (str rettype) "*")
+                     (not= 'void* rettype))
+            (throw (Exception.
+                    (str
+                     "typed pointers are not supported as return types: "
+                     fdef))))
+          {:name (str name)
+           :rettype (check-type (or rettype 'void))
+           :argtypes (vec (for [a argvec] (check-type a)))
+           :doc doc
+           :cljname cljname})))))
+
+(defn parse-callbacks
+  [cbs]
+  (for [cb cbs]
+    (let [name (first cb)
+          argtypes (second cb)
+          rettype (first (next (next cb)))
+          except #(throw (Exception. (str "malformed callback spec: " cb)))]
+      (when-not name (except))
+      (when-not (and argtypes (vector? argtypes)) (except))
+      {:name name
+       :argtypes argtypes
+       :rettype (or rettype 'void)
+       :classname (.replaceAll
+                   (str (ns-name *ns*) \. "callback_" (UUID/randomUUID))
+                   "-" "_")})))
+
 (defn parse
   "Parses input to defclib and returns a library specification map"
   [lib & body]
   (when-not (symbol? lib)
     (throw (Exception. "lib must be a symbol"))) ;; overkill?
-  (let [third (fn [coll] (first (next (next coll))))
-        drop-until (fn [pred coll] (drop-while #(not (pred %)) coll))
-        functions
-        (for [fdef body]
-          (if-not (list? fdef)
-            (throw (Exception. (str "invalid function description: " fdef)))
-            (let [name (first fdef)
-                  doc (when (string? (second fdef)) (second fdef))
-                  cljname (cond (symbol? (second fdef)) (second fdef)
-                                (and (string? (second fdef))
-                                     (symbol? (third fdef))) (third fdef)
-                                :else name)
-                  argvec (first (drop-until #(vector? %) fdef))
-                  rettype (second (drop-until #(vector? %) fdef))]
-              (when-not (symbol? name)
-                (throw (Exception.
-                        (str "expected symbol as function name: " fdef))))
-              (when-not (vector? argvec)
-                (throw (Exception. (str "argument vector missing: " fdef))))
-              ;; Can't support Buffers as return types since there is no way
-              ;; of knowing the size of the returned memory block.
-              ;; User must manually use the .getByteBuffer of the Pointer class.
-              (when (and rettype
-                         (.endsWith (str rettype) "*")
-                         (not= 'void* rettype))
-                (throw (Exception.
-                        (str
-                         "typed pointers are not supported as return types: "
-                         fdef))))
-              {:name (str name)
-               :rettype (check-type (or rettype 'void))
-               :argtypes (vec (for [a argvec] (check-type a)))
-               :doc doc
-               :cljname cljname})))]
+  (let [when-key (fn [k f]
+                   (when-let [stuff (some #(when (= k (first %))
+                                             (next %))
+                                          body)]
+                     (f stuff)))
+        callbacks (when-key :callbacks parse-callbacks)
+        functions (when-key :functions parse-functions)]
     {:lib lib
+     :cbs callbacks
      :fns functions
      :pkg (symbol (.replaceAll (str (ns-name *ns*)) "-" "_"))
      :classname (symbol (.replaceAll
@@ -260,12 +299,20 @@
        ;; error of not finding the library file here rather than
        ;; in the static class initializer.
        (Native/loadLibrary ~(str (:lib lib)) Library)
+       ;; Callback interfaces and constructors
+       ~@(for [cbspec (:cbs lib)]
+           `(do
+              (load-code ~(:classname cbspec)
+                         (make-callback-interface '~cbspec))
+              ~(make-callback-constructor cbspec)))
+       ;; Main glue class
        (load-code ~clsname
                   (make-native-lib-stub
                    ~(str (:lib lib))
                    '~(:fns lib)
                    :name '~(:classname lib)
                    :pkg '~(:pkg lib)))
+       ;; Rebinding of function var roots
        ~@(for [fdef (:fns lib)]
            (let [native (:name fdef)
                  name (:cljname fdef)
@@ -335,6 +382,7 @@
                "\n  and rebinds the var roots of all it's mapped"
                "\n  functions to call their native counterparts.")
          [] ~(loadlib-fn lib))
+       ~@(make-callback-constructor-stubs lib)
        ~@(make-clj-stubs lib))))
 
 (comment
@@ -343,8 +391,9 @@
 
   (defclib
     m
-    (sin [double] double)
-    (cos [double] double))
+    (:functions
+     (sin [double] double)
+     (cos [double] double)))
 
   (loadlib-m)
 
@@ -358,9 +407,10 @@
 
   (defclib
     c
-    (malloc [size_t] void*)
-    (free [void*])
-    (memset [byte* int size_t] void*))
+    (:functions
+     (malloc [size_t] void*)
+     (free [void*])
+     (memset [byte* int size_t] void*)))
 
   (loadlib-c)
 
