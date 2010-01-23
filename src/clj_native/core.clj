@@ -8,7 +8,7 @@
 
 (ns clj-native.core
   (:use [clojure.contrib.seq-utils :only [indexed]])
-  (:import [clojure.asm ClassVisitor MethodVisitor
+  (:import [clojure.asm ClassVisitor MethodVisitor FieldVisitor
             ClassWriter Opcodes Type]
            [java.util UUID]
            [java.nio ByteBuffer IntBuffer CharBuffer
@@ -170,6 +170,58 @@
           (.visitEnd)))
     (.visitEnd cv)
     (.toByteArray cv)))
+
+(defn make-struct
+  "Creates jna classes for representing a C struct
+  that may be passed by value or reference."
+  [struct-spec]
+  (let [#^ClassVisitor cv (ClassWriter. 0)
+        replace-dots (fn [#^String s] (.replaceAll s "\\." "/"))
+        internal-name (replace-dots (:classname struct-spec))
+        inner-name (fn [t] (str internal-name "$" t))
+        inner (fn [t]
+                (let [#^ClassVisitor cv (ClassWriter. 0)
+                      iname (inner-name t)]
+                  (.visit cv Opcodes/V1_5
+                          (+ Opcodes/ACC_PUBLIC Opcodes/ACC_STATIC)
+                          iname nil internal-name
+                          (into-array
+                           String [(str "com/sun/jna/Structure$" t)]))
+                  (.visitOuterClass cv internal-name nil nil)
+                  (doto #^MethodVisitor
+                    (.visitMethod cv Opcodes/ACC_PUBLIC "<init>" "()V" nil nil)
+                    (.visitCode)
+                    (.visitVarInsn Opcodes/ALOAD 0)
+                    (.visitMethodInsn
+                     Opcodes/INVOKESPECIAL internal-name "<init>" "()V")
+                    (.visitInsn Opcodes/RETURN)
+                    (.visitMaxs 1 1)
+                    (.visitEnd))
+                  (.visitEnd cv)
+                  (.toByteArray cv)))]
+    (.visit cv Opcodes/V1_5 Opcodes/ACC_PUBLIC internal-name
+            nil "com/sun/jna/Structure" (make-array String 0))
+    (.visitInnerClass cv (inner-name 'ByValue) internal-name
+                      "ByValue" (+ Opcodes/ACC_PUBLIC Opcodes/ACC_STATIC))
+    (.visitInnerClass cv (inner-name 'ByReference) internal-name
+                      "ByReference"
+                      (+ Opcodes/ACC_PUBLIC Opcodes/ACC_STATIC))
+    (doto #^MethodVisitor
+      (.visitMethod cv Opcodes/ACC_PUBLIC "<init>" "()V" nil nil)
+      (.visitCode)
+      (.visitVarInsn Opcodes/ALOAD 0)
+      (.visitMethodInsn
+       Opcodes/INVOKESPECIAL "com/sun/jna/Structure" "<init>" "()V")
+      (.visitInsn Opcodes/RETURN)
+      (.visitMaxs 1 1)
+      (.visitEnd))
+    (doseq [field (:fields struct-spec)]
+      (let [{nm :name
+             type :type} field]
+        (.visitEnd (.visitField cv Opcodes/ACC_PUBLIC (name nm)
+                                (descriptor type) nil nil))))
+    (.visitEnd cv)
+    [(.toByteArray cv) (inner 'ByValue) (inner 'ByReference)]))
 
 (defn make-callback-constructor-stubs
   "Creates stub functions for callback constructors."
