@@ -16,6 +16,12 @@
            [com.sun.jna Native Library NativeLong
             Pointer WString Structure Union Callback]))
 
+;;; ***************************************************************************
+;;;
+;;; -----===== Code loading =====-----
+;;;
+;;; ***************************************************************************
+
 (defn get-root-loader
   "Gets the root DynamicClassLoader"
   []
@@ -29,6 +35,12 @@
   "Loads bytecode (a class definition) using the root DynamicClassLoader"
   [#^String classname #^"[B" bytecodes]
   (.defineClass #^ClassLoader (get-root-loader) classname bytecodes))
+
+;;; ***************************************************************************
+;;;
+;;; -----===== Types =====-----
+;;;
+;;; ***************************************************************************
 
 (defn native-long
   "Returns the java type corresponding to
@@ -84,13 +96,7 @@
       'i64* LongBuffer
       'float* FloatBuffer
       'double* DoubleBuffer
-      'struct Structure
-      'struct* Structure
-      'union Union
-      ;; No idea how anyone will ever be able to write struct[] :)
-      (symbol "struct[]") (class (make-array Structure 0))
-      'structs (class (make-array Structure 0))
-      'struct-array (class (make-array Structure 0))
+      ;; TODO: typed callbacks
       'fn Callback
       'callback Callback})
 
@@ -100,6 +106,12 @@
   (cond
    (class? t) (Type/getDescriptor t)
    (fn? t) (Type/getDescriptor (t))))
+
+;;; ***************************************************************************
+;;;
+;;; -----===== Functions =====-----
+;;;
+;;; ***************************************************************************
 
 (defn make-native-func
   "Create a static method stub for a native function"
@@ -152,28 +164,19 @@
       (.visitEnd cv)
       (.toByteArray cv))))
 
-(defn make-callback-interface
-  "Creates a java interface for a C callback specification."
-  [cbspec]
-  (let [#^ClassVisitor cv (ClassWriter. 0)]
-    (.visit cv Opcodes/V1_5
-            (+ Opcodes/ACC_PUBLIC Opcodes/ACC_ABSTRACT Opcodes/ACC_INTERFACE)
-            (.replaceAll (:classname cbspec) "\\." "/") nil "java/lang/Object"
-            (into-array String ["com/sun/jna/Callback"]))
-    (let [rettype  (type-map (:rettype cbspec))
-          argtypes (map type-map (:argtypes cbspec))
-          opcodes (+ Opcodes/ACC_PUBLIC Opcodes/ACC_ABSTRACT)
-          desc (str "(" (apply str (map descriptor argtypes))
-                    ")" (descriptor rettype))]
-      (-> cv
-          (.visitMethod (int opcodes) "invoke" desc nil nil)
-          (.visitEnd)))
-    (.visitEnd cv)
-    (.toByteArray cv)))
+;;; ***************************************************************************
+;;;
+;;; -----===== Structs =====-----
+;;;
+;;; ***************************************************************************
 
-(defn make-struct
+(defn make-native-struct
   "Creates jna classes for representing a C struct
-  that may be passed by value or reference."
+  that may be passed by value or reference.
+  Returns a vector with 3 items; the bytecode for
+  the specified struct as well as bytecode for inner
+  classes representing the ByValue and ByReference
+  versions of the struct respectively."
   [struct-spec]
   (let [#^ClassVisitor cv (ClassWriter. 0)
         replace-dots (fn [#^String s] (.replaceAll s "\\." "/"))
@@ -219,9 +222,75 @@
       (let [{nm :name
              type :type} field]
         (.visitEnd (.visitField cv Opcodes/ACC_PUBLIC (name nm)
-                                (descriptor type) nil nil))))
+                                (descriptor (type-map type)) nil nil))))
     (.visitEnd cv)
     [(.toByteArray cv) (inner 'ByValue) (inner 'ByReference)]))
+
+(defn make-struct-constructor-stubs
+  "Creates stub functions for struct constructors."
+  [lib]
+  (let [ns (ns-name *ns*)
+        msg (str "Must call loadlib-" (:lib lib) " before this function")]
+    (for [sspec (:structs lib)]
+      (let [valname (symbol (str (:name sspec) "-byval"))
+            refname (symbol (str (:name sspec) "-byref"))]
+        `(do
+           (defn ~valname
+             ~(str "Creates a new structure object of type\n  "
+                   (:name sspec) " that can be passed by value\n "
+                   "between jvm and native code.")
+             [] (throw (Exception. ~msg)))
+           (defn ~refname
+             ~(str "Creates a new structure object of type\n  "
+                   (:name sspec) " that can be passed by reference\n "
+                   "between jvm and native code.")
+             [] (throw (Exception. ~msg))))))))
+
+(defn make-struct-constructor
+  "Creates code for creating a constructor
+  function for a given struct."
+  [sspec]
+  (let [ns (ns-name *ns*)
+        valname (symbol (str (:name sspec) "-byval"))
+        refname (symbol (str (:name sspec) "-byref"))
+        v (gensym)
+        code (fn [name jname]
+               `(eval
+                 ~(list 'quote
+                        `(let [~v (ns-resolve '~ns '~name)]
+                           (.bindRoot
+                            ~v
+                            (fn []
+                              (~(symbol (str (:classname sspec)
+                                             "$" jname ".")))))))))]
+    `(do
+       ~(code valname 'ByValue)
+       ~(code refname 'ByReference))))
+
+;;; ***************************************************************************
+;;;
+;;; -----===== Callbacks =====-----
+;;;
+;;; ***************************************************************************
+
+(defn make-callback-interface
+  "Creates a java interface for a C callback specification."
+  [cbspec]
+  (let [#^ClassVisitor cv (ClassWriter. 0)]
+    (.visit cv Opcodes/V1_5
+            (+ Opcodes/ACC_PUBLIC Opcodes/ACC_ABSTRACT Opcodes/ACC_INTERFACE)
+            (.replaceAll (:classname cbspec) "\\." "/") nil "java/lang/Object"
+            (into-array String ["com/sun/jna/Callback"]))
+    (let [rettype  (type-map (:rettype cbspec))
+          argtypes (map type-map (:argtypes cbspec))
+          opcodes (+ Opcodes/ACC_PUBLIC Opcodes/ACC_ABSTRACT)
+          desc (str "(" (apply str (map descriptor argtypes))
+                    ")" (descriptor rettype))]
+      (-> cv
+          (.visitMethod (int opcodes) "invoke" desc nil nil)
+          (.visitEnd)))
+    (.visitEnd cv)
+    (.toByteArray cv)))
 
 (defn make-callback-constructor-stubs
   "Creates stub functions for callback constructors."
@@ -256,6 +325,12 @@
                    (proxy [~(symbol (:classname cbspec))] []
                      (~'invoke ~(vec args)
                                (~'f ~@args))))))))))
+
+;;; ***************************************************************************
+;;;
+;;; -----===== Parsing =====-----
+;;;
+;;; ***************************************************************************
 
 (defn check-type
   [t]
@@ -315,6 +390,31 @@
                    (str (ns-name *ns*) \. "callback_" (UUID/randomUUID))
                    "-" "_")})))
 
+;; TODO: keep track of user defined types
+;; so that structs may refer to each other
+;; or even themselves
+;; Mapping between struct name symbols and
+;; generated classnames?
+(defn parse-structs
+  [structs]
+  (for [s structs]
+    (do
+      (when-not (symbol? (first s))
+        (throw (Exception. (str "Malformed struct spec: " s
+                                " name must be a symbol."))))
+      (when-not (even? (count (next s)))
+        (throw (Exception. (str "Malformed struct spec: " s
+                                " uneven field declarations."))))
+      (let [name (first s)
+            fields (apply array-map (next s))]
+        {:name name
+         :classname (.replaceAll
+                     (str (ns-name *ns*) \. "struct_" (UUID/randomUUID))
+                     "-" "_")
+         :fields (for [f fields]
+                   {:name (key f)
+                    :type (val f)})}))))
+
 (defn parse
   "Parses input to defclib and returns a library specification map"
   [lib & body]
@@ -326,13 +426,15 @@
                                           body)]
                      (f stuff)))
         callbacks (when-key :callbacks parse-callbacks)
-        functions (when-key :functions parse-functions)]
+        functions (when-key :functions parse-functions)
+        structs (when-key :structs parse-structs)]
     {:lib lib
      :cbs callbacks
      :fns functions
+     :structs structs
      :pkg (symbol (.replaceAll (str (ns-name *ns*)) "-" "_"))
      :classname (symbol (.replaceAll
-                         (str "clj_native_" (UUID/randomUUID)) "-" "_"))}))
+                         (str "lib_" (UUID/randomUUID)) "-" "_"))}))
 
 (defn argnames
   "Create unique names for a seq of argument types"
@@ -340,6 +442,14 @@
   (for [[i t] (indexed argtypes)]
     (symbol (str t i))))
 
+;;; ***************************************************************************
+;;;
+;;; -----===== Initialization =====-----
+;;;
+;;; ***************************************************************************
+
+;; TODO: make this return a run once only function
+;; the LinkageErrors and the performance overhead are annoying
 (defn loadlib-fn
   "Creates a function body that will load a native library
   and replace all the mapped function stubs with real versions."
@@ -351,6 +461,13 @@
        ;; error of not finding the library file here rather than
        ;; in the static class initializer.
        (Native/loadLibrary ~(str (:lib lib)) Library)
+       ;; Structs
+       ~@(for [sspec (:structs lib)]
+           `(let [[main# val# ref#] (make-native-struct '~sspec)]
+              (load-code ~(:classname sspec) main#)
+              (load-code ~(str (:classname sspec) "$ByValue") val#)
+              (load-code ~(str (:classname sspec) "$ByReference") ref#)
+              ~(make-struct-constructor sspec)))
        ;; Callback interfaces and constructors
        ~@(for [cbspec (:cbs lib)]
            `(do
@@ -365,6 +482,7 @@
                    :name '~(:classname lib)
                    :pkg '~(:pkg lib)))
        ;; Rebinding of function var roots
+       ;; TODO: move to own function like the others
        ~@(for [fdef (:fns lib)]
            (let [native (:name fdef)
                  name (:cljname fdef)
@@ -380,6 +498,7 @@
                                      (list* (symbol (str clsname \/ native))
                                             args)))))))))))
 
+;; TODO: move this up to the other function stuff and rename it
 (defn make-clj-stubs
   "Creates stub functions for linking against before the native
   library has been loaded."
@@ -398,8 +517,11 @@
       (list 'def (with-meta n m)
             (list `fn (vec args) `(throw (Exception. ~msg)))))))
 
-;; --------------- PUBLIC INTERFACE ---------------
-;; Use other stuff at own peril
+;;; ***************************************************************************
+;;;
+;;; -----===== Public Interface =====-----
+;;;
+;;; ***************************************************************************
 
 (defmacro defclib
   "Create C library bindings.
@@ -434,6 +556,7 @@
                "\n  and rebinds the var roots of all it's mapped"
                "\n  functions to call their native counterparts.")
          [] ~(loadlib-fn lib))
+       ~@(make-struct-constructor-stubs lib)
        ~@(make-callback-constructor-stubs lib)
        ~@(make-clj-stubs lib))))
 
