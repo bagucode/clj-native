@@ -53,6 +53,16 @@ int call_add_callback(add_callback cb, int x, int y) {
   return cb(x, y);
 }
 
+struct2 addOneToStructTwoByValue(struct2 s2)
+{
+  struct2 ret;
+  ret.ll = s2.ll + 1;
+  ret.s1ByValue.x = s2.s1ByValue.x + 1;
+  ret.s1ByValue.y = s2.s1ByValue.y + 1;
+  ret.s1ByValue.k = s2.s1ByValue.k + 1;
+  return ret;
+}
+
 struct1 addOneToStructByValue(struct1 s1)
 {
   struct1 ret;

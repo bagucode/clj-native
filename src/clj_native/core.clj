@@ -95,17 +95,35 @@
       'i32* IntBuffer
       'i64* LongBuffer
       'float* FloatBuffer
-      'double* DoubleBuffer
-      ;; TODO: typed callbacks
-      'fn Callback
-      'callback Callback})
+      'double* DoubleBuffer})
+
+(defn resolve-type
+  "Get type from the type map or return input
+  as is if it's a user defined type"
+  [t]
+  (or (type-map t) t))
+
+(defn user-type-class
+  [t]
+  (cond
+   ;; struct by reference
+   (and (map? t) (= :struct (:kind t))
+        (.endsWith (name (:name t)) "*"))
+   (str (:classname t) "$ByReference")
+   ;; struct by value
+   (and (map? t) (= :struct (:kind t)))
+   (str (:classname t) "$ByValue")
+   ;; callback
+   (map? t) (:classname t)))
 
 (defn descriptor
   "Get internal name type descriptor for t"
   [t]
-  (cond
-   (class? t) (Type/getDescriptor t)
-   (fn? t) (Type/getDescriptor (t))))
+  (let [replace-dots (fn [#^String s] (.replaceAll s "\\." "/"))]
+    (cond
+     (class? t) (Type/getDescriptor t)
+     (fn? t) (Type/getDescriptor (t))
+     (map? t) (str "L" (replace-dots (user-type-class t)) ";"))))
 
 ;;; ***************************************************************************
 ;;;
@@ -117,8 +135,8 @@
   "Create a static method stub for a native function"
   [#^ClassVisitor cv fndesc]
   (let [name (:name fndesc)
-        rettype  (type-map (:rettype fndesc))
-        argtypes (map type-map (:argtypes fndesc))
+        rettype (resolve-type (:rettype fndesc))
+        argtypes (map resolve-type (:argtypes fndesc))
         opcodes (+ Opcodes/ACC_PUBLIC Opcodes/ACC_STATIC Opcodes/ACC_NATIVE)
         desc (str "(" (apply str (map descriptor argtypes))
                   ")" (descriptor rettype))]
@@ -222,7 +240,8 @@
       (let [{nm :name
              type :type} field]
         (.visitEnd (.visitField cv Opcodes/ACC_PUBLIC (name nm)
-                                (descriptor (type-map type)) nil nil))))
+                                (descriptor (resolve-type type))
+                                nil nil))))
     (.visitEnd cv)
     [(.toByteArray cv) (inner 'ByValue) (inner 'ByReference)]))
 
@@ -281,8 +300,8 @@
             (+ Opcodes/ACC_PUBLIC Opcodes/ACC_ABSTRACT Opcodes/ACC_INTERFACE)
             (.replaceAll (:classname cbspec) "\\." "/") nil "java/lang/Object"
             (into-array String ["com/sun/jna/Callback"]))
-    (let [rettype  (type-map (:rettype cbspec))
-          argtypes (map type-map (:argtypes cbspec))
+    (let [rettype (resolve-type (:rettype cbspec))
+          argtypes (map resolve-type (:argtypes cbspec))
           opcodes (+ Opcodes/ACC_PUBLIC Opcodes/ACC_ABSTRACT)
           desc (str "(" (apply str (map descriptor argtypes))
                     ")" (descriptor rettype))]
@@ -303,16 +322,19 @@
            ~(str "Creates a new callback proxy object of type\n  "
                  (:name cbspec) " that will delegate to the supplied clojure\n"
                  "  function when it is called from native code.\n"
-                 "  The clojure function must take " (count (:argtypes cbspec))
+                 "  The clojure function must take " (count (force (:argtypes cbspec)))
                  " arguments\n  and return an object"
-                 " of type " (type-map (:rettype cbspec)))
+                 " of type " (let [t (resolve-type (force (:rettype cbspec)))]
+                               (if (map? t)
+                                 (:name t)
+                                 t)))
            [~'f] (throw (Exception. ~msg)))))))
 
 (defn make-callback-constructor
   "Creates code for creating a constructor
   function for a given callback."
   [cbspec]
-  (let [args (take (count (:argtypes cbspec)) (repeatedly gensym))
+  (let [args (take (count (force (:argtypes cbspec))) (repeatedly gensym))
         ns (ns-name *ns*)
         name (symbol (str "make-" (:name cbspec)))
         v (gensym)]
@@ -333,101 +355,115 @@
 ;;; ***************************************************************************
 
 (defn check-type
-  [t]
-  (when (not-any? #(= t %) (keys type-map))
-    (throw (Exception. (str "Unknown type: " t))))
-  t)
+  ([t]
+     (check-type t nil))
+  ([t user-types]
+     (let [resolved (if (type-map t)
+                      t
+                      (and user-types (get @user-types t)))]
+       (when-not resolved
+         (throw (Exception. (str "Unknown type: " t))))
+       resolved)))
 
 (defn parse-functions
-  [fns]
+  [fns user-types]
   (let [third (fn [coll] (first (next (next coll))))
         drop-until (fn [pred coll] (drop-while #(not (pred %)) coll))]
-    (for [fdef fns]
-      (if-not (list? fdef)
-        (throw (Exception. (str "invalid function description: " fdef)))
-        (let [name (first fdef)
-              doc (when (string? (second fdef)) (second fdef))
-              cljname (cond (symbol? (second fdef)) (second fdef)
-                            (and (string? (second fdef))
-                                 (symbol? (third fdef))) (third fdef)
-                            :else name)
-              argvec (first (drop-until #(vector? %) fdef))
-              rettype (second (drop-until #(vector? %) fdef))]
-          (when-not (symbol? name)
-            (throw (Exception.
-                    (str "expected symbol as function name: " fdef))))
-          (when-not (vector? argvec)
-            (throw (Exception. (str "argument vector missing: " fdef))))
-          ;; Can't support Buffers as return types since there is no way
-          ;; of knowing the size of the returned memory block.
-          ;; User must manually use the .getByteBuffer of the Pointer class.
-          (when (and rettype
-                     (.endsWith (str rettype) "*")
-                     (not= 'void* rettype))
-            (throw (Exception.
-                    (str
-                     "typed pointers are not supported as return types: "
-                     fdef))))
-          {:name (str name)
-           :rettype (check-type (or rettype 'void))
-           :argtypes (vec (for [a argvec] (check-type a)))
-           :doc doc
-           :cljname cljname})))))
+    (doall
+     (for [fdef fns]
+       (if-not (list? fdef)
+         (throw (Exception. (str "invalid function description: " fdef)))
+         (let [name (first fdef)
+               doc (when (string? (second fdef)) (second fdef))
+               cljname (cond (symbol? (second fdef)) (second fdef)
+                             (and (string? (second fdef))
+                                  (symbol? (third fdef))) (third fdef)
+                             :else name)
+               argvec (first (drop-until #(vector? %) fdef))
+               rettype (second (drop-until #(vector? %) fdef))]
+           (when-not (symbol? name)
+             (throw (Exception.
+                     (str "expected symbol as function name: " fdef))))
+           (when-not (vector? argvec)
+             (throw (Exception. (str "argument vector missing: " fdef))))
+           ;; Can't support Buffers as return types since there is no way
+           ;; of knowing the size of the returned memory block.
+           ;; User must manually use the .getByteBuffer of the Pointer class.
+           (when (and rettype
+                      (.endsWith (str rettype) "*")
+                      (and (not= 'void* rettype)
+                           (not (contains? @user-types rettype))))
+             (throw (Exception.
+                     (str
+                      "typed pointers are not supported as return types: "
+                      fdef))))
+           {:name (str name)
+            :rettype (delay (check-type (or rettype 'void) user-types))
+            :argtypes (delay (vec (for [a argvec] (check-type a user-types))))
+            :doc doc
+            :cljname cljname}))))))
 
 (defn parse-callbacks
-  [cbs]
-  (for [cb cbs]
-    (let [name (first cb)
-          argtypes (second cb)
-          rettype (first (next (next cb)))
-          except #(throw (Exception. (str "malformed callback spec: " cb)))]
-      (when-not name (except))
-      (when-not (and argtypes (vector? argtypes)) (except))
-      {:name name
-       :argtypes argtypes
-       :rettype (or rettype 'void)
-       :classname (.replaceAll
-                   (str (ns-name *ns*) \. "callback_" (UUID/randomUUID))
-                   "-" "_")})))
+  [cbs user-types]
+  (doall
+   (for [cb cbs]
+     (let [name (first cb)
+           argtypes (second cb)
+           rettype (first (next (next cb)))
+           except #(throw (Exception. (str "malformed callback spec: " cb)))
+           classname (.replaceAll
+                      (str (ns-name *ns*) \. "callback_" (UUID/randomUUID))
+                      "-" "_")]
+       (when-not name (except))
+       (when-not (and argtypes (vector? argtypes)) (except))
+       (swap! user-types assoc name
+              {:name name :classname classname :kind :callback})
+       {:name name
+        :argtypes (delay (vec (for [a argtypes] (check-type a user-types))))
+        :rettype (delay (check-type (or rettype 'void) user-types))
+        :classname classname}))))
 
-;; TODO: keep track of user defined types
-;; so that structs may refer to each other
-;; or even themselves
-;; Mapping between struct name symbols and
-;; generated classnames?
 (defn parse-structs
-  [structs]
-  (for [s structs]
-    (do
-      (when-not (symbol? (first s))
-        (throw (Exception. (str "Malformed struct spec: " s
-                                " name must be a symbol."))))
-      (when-not (even? (count (next s)))
-        (throw (Exception. (str "Malformed struct spec: " s
-                                " uneven field declarations."))))
-      (let [name (first s)
-            fields (apply array-map (next s))]
-        {:name name
-         :classname (.replaceAll
-                     (str (ns-name *ns*) \. "struct_" (UUID/randomUUID))
-                     "-" "_")
-         :fields (for [f fields]
-                   {:name (key f)
-                    :type (val f)})}))))
+  [structs user-types]
+  (doall
+   (for [s structs]
+     (do
+       (when-not (symbol? (first s))
+         (throw (Exception. (str "Malformed struct spec: " s
+                                 " name must be a symbol."))))
+       (when-not (even? (count (next s)))
+         (throw (Exception. (str "Malformed struct spec: " s
+                                 " uneven field declarations."))))
+       (let [name (first s)
+             classname (.replaceAll
+                        (str (ns-name *ns*) \. "struct_" (UUID/randomUUID))
+                        "-" "_")
+             fields (apply array-map (next s))]
+         (swap! user-types assoc name
+                {:name name :classname classname :kind :struct})
+         (let [ptrname (symbol (str name "*"))]
+           (swap! user-types assoc ptrname
+                  {:name ptrname :classname classname :kind :struct}))
+         {:name name
+          :classname classname
+          :fields (for [f fields]
+                    {:name (key f)
+                     :type (delay (check-type (val f) user-types))})})))))
 
 (defn parse
   "Parses input to defclib and returns a library specification map"
   [lib & body]
   (when-not (symbol? lib)
     (throw (Exception. "lib must be a symbol"))) ;; overkill?
-  (let [when-key (fn [k f]
+  (let [when-key (fn [k f ut]
                    (when-let [stuff (some #(when (= k (first %))
                                              (next %))
                                           body)]
-                     (f stuff)))
-        callbacks (when-key :callbacks parse-callbacks)
-        functions (when-key :functions parse-functions)
-        structs (when-key :structs parse-structs)]
+                     (f stuff ut)))
+        user-types (atom {})
+        structs (when-key :structs parse-structs user-types)
+        callbacks (when-key :callbacks parse-callbacks user-types)
+        functions (when-key :functions parse-functions user-types)]
     {:lib lib
      :cbs callbacks
      :fns functions
@@ -440,7 +476,7 @@
   "Create unique names for a seq of argument types"
   [argtypes]
   (for [[i t] (indexed argtypes)]
-    (symbol (str t i))))
+    (symbol (str (if (map? t) (:name t) t) i))))
 
 ;;; ***************************************************************************
 ;;;
@@ -461,9 +497,14 @@
        ;; error of not finding the library file here rather than
        ;; in the static class initializer.
        (Native/loadLibrary ~(str (:lib lib)) Library)
-       ;; Structs
+        ;; Structs
        ~@(for [sspec (:structs lib)]
-           `(let [[main# val# ref#] (make-native-struct '~sspec)]
+           `(let [[main# val# ref#] (make-native-struct
+                                     '~(update-in
+                                        sspec [:fields]
+                                        #(doall
+                                          (for [f %]
+                                            (update-in f [:type] force)))))]
               (load-code ~(:classname sspec) main#)
               (load-code ~(str (:classname sspec) "$ByValue") val#)
               (load-code ~(str (:classname sspec) "$ByReference") ref#)
@@ -472,13 +513,19 @@
        ~@(for [cbspec (:cbs lib)]
            `(do
               (load-code ~(:classname cbspec)
-                         (make-callback-interface '~cbspec))
+                         (make-callback-interface
+                          '~(assoc cbspec
+                              :rettype (force (:rettype cbspec))
+                              :argtypes (force (:argtypes cbspec)))))
               ~(make-callback-constructor cbspec)))
        ;; Main glue class
        (load-code ~clsname
                   (make-native-lib-stub
                    ~(str (:lib lib))
-                   '~(:fns lib)
+                   '~(doall
+                      (for [fdef (:fns lib)]
+                        (-> (update-in fdef [:argtypes] force)
+                            (update-in [:rettype] force))))
                    :name '~(:classname lib)
                    :pkg '~(:pkg lib)))
        ;; Rebinding of function var roots
@@ -486,7 +533,7 @@
        ~@(for [fdef (:fns lib)]
            (let [native (:name fdef)
                  name (:cljname fdef)
-                 args (vec (argnames (:argtypes fdef)))
+                 args (vec (argnames (force (:argtypes fdef))))
                  ns (ns-name *ns*)
                  v (gensym)]
              `(eval
@@ -507,12 +554,17 @@
     (let [m (if (:doc fdef)
               {:doc (:doc fdef)}
               {})
-          m (if (not= (:rettype fdef) 'void)
-              (assoc m :tag (type-map (:rettype fdef)))
-              m)
-          m (assoc m :arglists (list 'quote (list (:argtypes fdef))))
+          ;; TODO: fix this again... breaks with user defined classes
+          ;; m (if (not= (force (:rettype fdef)) 'void)
+          ;;     (assoc m :tag
+          ;;            (let [t (resolve-type (force (:rettype fdef)))]
+          ;;              (if (map? t)
+          ;;                (symbol (user-type-class t))
+          ;;                t)))
+          ;;     m)
+          ;; m (assoc m :arglists (list 'quote (list (force (:argtypes fdef)))))
           n (:cljname fdef)
-          args (argnames (:argtypes fdef))
+          args (argnames (force (:argtypes fdef)))
           msg (str "Must call loadlib-" (:lib lib) " before this function")]
       (list 'def (with-meta n m)
             (list `fn (vec args) `(throw (Exception. ~msg)))))))
@@ -523,31 +575,9 @@
 ;;;
 ;;; ***************************************************************************
 
+;; TODO: new doc string
 (defmacro defclib
-  "Create C library bindings.
-  lib is a symbol naming the native library to link eg. 'c' for
-  linking against the standard C runtime.
-  body is any number of function descriptions of the form:
-
-  (name docstring? clojure-name? [argtypes*] returntype?)
-
-  Where name must match the name of the C function. The only
-  other required component is the vector containing the argument
-  types, even if the function takes no arguments. If the type
-  of the return value is left out, void is assumed.
-  A clojure function mapped to a C function that returns void
-  will always return nil.
-  clojure-name can be used to give the function a different name
-  within the clojure runtime, useful eg. for getting rid of annoying
-  prefixes used by C libraries to ensure unique names.
-
-  This macro will create clojure functions in the current
-  namespace corresponding to the imported C functions.
-  A function called loadlib-libname will also be created where
-  libname is the name of the native library. This function
-  dynamically loads the native library and must be called at
-  runtime (eg. at the top of -main) before using any of the
-  mapped functions."
+  "Create C library bindings."
   [lib & body]
   (let [lib (apply parse lib body)]
     `(do
@@ -561,6 +591,9 @@
        ~@(make-clj-stubs lib))))
 
 (comment
+
+  ;; Outdated
+  ;; Look at src/examples/c_lib.clj
 
   (use ['clj-native.core :only ['defclib]])
 
