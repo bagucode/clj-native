@@ -25,7 +25,9 @@
    (call_add_callback call-add-callback [add-cb int int] int)
    (addOneToStructByReference [struct1*] struct1*)
    (addOneToStructByValue [struct1] struct1)
-   (addOneToStructTwoByValue [struct2] struct2)))
+   (addOneToStructTwoByValue [struct2] struct2)
+   (returnsConstantString [] constchar*)
+   (returnsConstantWString [] constwchar_t*)))
 
 (defn main
   []
@@ -50,7 +52,9 @@
     (println "Passing struct2 by value")
     (println s2val)
     (println (addOneToStructTwoByValue s2val))
-    (println s2val)))
+    (println s2val)
+    (println (returnsConstantString))
+    (println (returnsConstantWString))))
 
 (comment
 

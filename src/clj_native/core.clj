@@ -394,10 +394,12 @@
                       (.endsWith (str rettype) "*")
                       (and (not= 'void* rettype)
                            (not= 'constchar* rettype)
+                           (not= 'constwchar_t* rettype)
                            (not (contains? @user-types rettype))))
              (throw (Exception.
                      (str
-                      "typed pointers (with the exception of constchar*) are"
+                      "typed pointers (with the exception of"
+                      " constchar*/constwchar_t*) are"
                       " not supported as return types: "
                       fdef))))
            {:name (str name)

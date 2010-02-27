@@ -1,6 +1,7 @@
 /*
   #include <stdio.h>
 */
+#include <wchar.h>
 
 /* globals */
 int globalInt = 10;
@@ -77,4 +78,14 @@ void addOneToStructByReference(struct1* s1)
   ++s1->x;
   ++s1->y;
   ++s1->k;
+}
+
+const char* returnsConstantString()
+{
+  return "This string should be safe to read as const char*";
+}
+
+const wchar_t* returnsConstantWString()
+{
+  return L"This string should be safe to read as const wchar_t*";
 }
