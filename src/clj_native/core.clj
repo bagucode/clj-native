@@ -218,6 +218,19 @@
                     (.visitInsn Opcodes/RETURN)
                     (.visitMaxs 1 1)
                     (.visitEnd))
+                  (doto #^MethodVisitor
+                    (.visitMethod cv Opcodes/ACC_PUBLIC "<init>" "(I)V" nil nil)
+                    (.visitCode)
+                    (.visitVarInsn Opcodes/ALOAD 0)
+                    (.visitMethodInsn
+                     Opcodes/INVOKESPECIAL internal-name "<init>" "()V")
+                    (.visitVarInsn Opcodes/ALOAD 0)
+                    (.visitVarInsn Opcodes/ILOAD 1)
+                    (.visitMethodInsn
+                     Opcodes/INVOKEVIRTUAL internal-name "setAlignType" "(I)V")
+                    (.visitInsn Opcodes/RETURN)
+                    (.visitMaxs 2 2)
+                    (.visitEnd))
                   (.visitEnd cv)
                   (.toByteArray cv)))]
     (.visit cv Opcodes/V1_5 Opcodes/ACC_PUBLIC internal-name
@@ -258,12 +271,14 @@
              ~(str "Creates a new structure object of type\n  "
                    (:name sspec) " that can be passed by value\n "
                    "between jvm and native code.")
-             [] (throw (Exception. ~msg)))
+             ([] (throw (Exception. ~msg)))
+             ([~'alignment] (throw (Exception. ~msg))))
            (defn ~refname
              ~(str "Creates a new structure object of type\n  "
                    (:name sspec) " that can be passed by reference\n "
                    "between jvm and native code.")
-             [] (throw (Exception. ~msg))))))))
+             ([] (throw (Exception. ~msg)))
+             ([~'alignment] (throw (Exception. ~msg)))))))))
 
 (defn make-struct-constructor
   "Creates code for creating a constructor
@@ -279,9 +294,13 @@
                         `(let [~v (ns-resolve '~ns '~name)]
                            (.bindRoot
                             ~v
-                            (fn []
-                              (~(symbol (str (:classname sspec)
-                                             "$" jname ".")))))))))]
+                            (fn
+                              ([] (~(symbol (str (:classname sspec)
+                                                 "$" jname "."))))
+                              ([alignment#]
+                                 (~(symbol (str (:classname sspec)
+                                                "$" jname "."))
+                                  alignment#))))))))]
     `(do
        ~(code valname 'ByValue)
        ~(code refname 'ByReference))))
