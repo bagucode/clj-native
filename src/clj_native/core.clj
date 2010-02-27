@@ -389,13 +389,16 @@
            ;; Can't support Buffers as return types since there is no way
            ;; of knowing the size of the returned memory block.
            ;; User must manually use the .getByteBuffer of the Pointer class.
+           ;; constchar* is ok though since they are null terminated.
            (when (and rettype
                       (.endsWith (str rettype) "*")
                       (and (not= 'void* rettype)
+                           (not= 'constchar* rettype)
                            (not (contains? @user-types rettype))))
              (throw (Exception.
                      (str
-                      "typed pointers are not supported as return types: "
+                      "typed pointers (with the exception of constchar*) are"
+                      " not supported as return types: "
                       fdef))))
            {:name (str name)
             :rettype (delay (check-type (or rettype 'void) user-types))
