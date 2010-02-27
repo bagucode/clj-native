@@ -3,7 +3,7 @@
 ;; Must be done before calling loadlib*, preferrably on command line
 
 (ns c-lib
-  (:use [clj-native.core :only [defclib]]))
+  (:use [clj-native.direct :only [defclib]]))
 
 (defclib
   c_lib
