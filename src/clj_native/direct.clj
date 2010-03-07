@@ -111,6 +111,9 @@
   (let [lib (apply parse-lib lib body)]
     `(do
        (def ~(:lib lib) {:loadfn ~(loadlib-fn lib)})
+       ;; TODO: Remove the stubs for structs and callbacks?
+       ;; They are not strictly needed. Could just require quoted symbols
+       ;; as input to constructor functions.
        ~@(make-struct-stubs (list 'quote (ns-name *ns*)) lib)
        ~@(make-callback-stubs (list 'quote (ns-name *ns*)) lib)
        ~@(make-function-stubs lib))))
