@@ -87,52 +87,26 @@
     (.visitEnd cv)
     [(.toByteArray cv) (inner 'ByValue) (inner 'ByReference)]))
 
-(defn make-struct-constructor-stubs
-  "Creates stub functions for struct constructors."
-  [lib]
-  (let [ns (ns-name *ns*)
-        msg (str "Must call loadlib-" (:lib lib) " before this function")]
-    (for [sspec (:structs lib)]
-      (let [valname (symbol (str (:name sspec) "-byval"))
-            refname (symbol (str (:name sspec) "-byref"))]
-        `(do
-           (defn ~valname
-             ~(str "Creates a new structure object of type\n  "
-                   (:name sspec) " that can be passed by value\n "
-                   "between jvm and native code.")
-             ([] (throw (Exception. ~msg)))
-             ([~'alignment] (throw (Exception. ~msg))))
-           (defn ~refname
-             ~(str "Creates a new structure object of type\n  "
-                   (:name sspec) " that can be passed by reference\n "
-                   "between jvm and native code.")
-             ([] (throw (Exception. ~msg)))
-             ([~'alignment] (throw (Exception. ~msg)))))))))
+(defn make-struct-stubs
+  [ns lib]
+  (for [sspec (:structs lib)]
+    `(intern (or (find-ns ~ns) *ns*) '~(:name sspec))))
 
-(defn make-struct-constructor
-  "Creates code for creating a constructor
-  function for a given struct."
-  [sspec]
-  (let [ns (ns-name *ns*)
-        valname (symbol (str (:name sspec) "-byval"))
-        refname (symbol (str (:name sspec) "-byref"))
-        v (gensym)
-        code (fn [name jname]
+(defn make-struct-constructors
+  [ns sspec]
+  (let [code (fn [type]
                `(eval
                  ~(list 'quote
-                        `(let [~v (ns-resolve '~ns '~name)]
-                           (.bindRoot
-                            ~v
-                            (fn
-                              ([] (~(symbol (str (:classname sspec)
-                                                 "$" jname "."))))
-                              ([alignment#]
-                                 (~(symbol (str (:classname sspec)
-                                                "$" jname "."))
-                                  alignment#))))))))]
-    `(do
-       ~(code valname 'ByValue)
-       ~(code refname 'ByReference))))
+                        `(fn
+                           ([] (~(symbol (str (:classname sspec)
+                                              "$" type "."))))
+                           ([alignment#]
+                              (~(symbol (str (:classname sspec)
+                                             "$" type "."))
+                               alignment#))))))]
+    `(intern (or (find-ns ~ns) *ns*) '~(:name sspec)
+             ~{:byval (code 'ByValue)
+               :byref (code 'ByReference)})))
 
 (defn parse-structs
   [structs user-types]
@@ -161,3 +135,23 @@
                     {:name (key f)
                      :type (delay (check-type (val f) user-types))})})))))
 
+
+;;; ***************************************************************************
+;;;
+;;; -----===== Public Interface =====-----
+;;;
+;;; ***************************************************************************
+
+(defn byval
+  "Creates a new instance of a structure that can be passed by value."
+  ([struct]
+     ((:byval struct)))
+  ([struct alignment]
+     ((:byval struct) alignment)))
+
+(defn byref
+  "Creates a new instance of a structure that can be passed by reference."
+  ([struct]
+     ((:byref struct)))
+  ([struct alignment]
+     ((:byref struct) alignment)))

@@ -61,7 +61,7 @@
               (load-code ~(:classname sspec) main#)
               (load-code ~(str (:classname sspec) "$ByValue") val#)
               (load-code ~(str (:classname sspec) "$ByReference") ref#)
-              ~(make-struct-constructor sspec)))
+              ~(make-struct-constructors (list 'quote (ns-name *ns*)) sspec)))
        ;; Callback interfaces and constructors
        ~@(for [cbspec (:cbs lib)]
            `(do
@@ -111,7 +111,7 @@
   (let [lib (apply parse-lib lib body)]
     `(do
        (def ~(:lib lib) {:loadfn ~(loadlib-fn lib)})
-       ~@(make-struct-constructor-stubs lib)
+       ~@(make-struct-stubs (list 'quote (ns-name *ns*)) lib)
        ~@(make-callback-constructor-stubs lib)
        ~@(make-function-stubs lib))))
 

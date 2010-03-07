@@ -4,7 +4,8 @@
 
 
 (ns c-lib
-  (:use [clj-native.direct :only [defclib loadlib]]))
+  (:use [clj-native.direct :only [defclib loadlib]]
+        [clj-native.structs :only [byref byval]]))
 
 (defclib
   c_lib
@@ -31,9 +32,9 @@
     (let [callback (make-add-cb (fn [x y]
                                   (println "in callback!")
                                   (+ x y)))
-          s1val (struct1-byval)
-          s1ref (struct1-byref)
-          s2val (struct2-byval)]
+          s1val (byval struct1)
+          s1ref (byref struct1)
+          s2val (byval struct2)]
       (println "Result of add(10, 35):" (add 10 35))
       (println "Result of call_add_callback(callback, 10, 78):"
                (call-add-callback callback 10 78))
