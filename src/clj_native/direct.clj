@@ -39,14 +39,12 @@
      :classname (symbol (.replaceAll
                          (str "lib_" (UUID/randomUUID)) "-" "_"))}))
 
-;; TODO: make this return a run once only function
-;; the LinkageErrors and the performance overhead are annoying
 (defn loadlib-fn
-  "Creates a function body that will load a native library
+  "Creates a function that will load a native library
   and replace all the mapped function stubs with real versions."
   [lib]
   (let [clsname (str (:pkg lib) \. (:classname lib))]
-    `(do
+    `(fn []
        ;; Try to load the native library before creating and
        ;; loading the JNA class because we want to discover the
        ;; error of not finding the library file here rather than
@@ -112,11 +110,15 @@
   [lib & body]
   (let [lib (apply parse-lib lib body)]
     `(do
-       (defn ~(symbol (str "loadlib-" (:lib lib)))
-         ~(str "Loads the native library " (:lib lib)
-               "\n  and rebinds the var roots of all it's mapped"
-               "\n  functions to call their native counterparts.")
-         [] ~(loadlib-fn lib))
+       (def ~(:lib lib) {:loadfn ~(loadlib-fn lib)})
        ~@(make-struct-constructor-stubs lib)
        ~@(make-callback-constructor-stubs lib)
        ~@(make-function-stubs lib))))
+
+(defn loadlib
+  "Loads a native library.
+  DO NOT call this on the top level, should be called at runtime only."
+  [libdef]
+  ((:loadfn libdef)))
+
+

@@ -145,3 +145,14 @@
   (for [[i t] (indexed argtypes)]
     (symbol (str (if (map? t) (:name t) t) i))))
 
+(defn def-or-update-var
+  "Creates or updates a var in the current namespace. The root value of the
+  var is set to the return value of update-fn which will be called with the
+  current value of the var (or nil if the var does not exist) and any extra
+  args supplied."
+  [name update-fn & args]
+  (if-let [current (ns-resolve *ns* name)]
+    (apply alter-var-root current update-fn args)
+    (intern *ns* name (apply update-fn nil args))))
+
+

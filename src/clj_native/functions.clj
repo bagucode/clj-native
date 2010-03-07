@@ -129,6 +129,6 @@
           ;; m (assoc m :arglists (list 'quote (list (force (:argtypes fdef)))))
           n (:cljname fdef)
           args (argnames (force (:argtypes fdef)))
-          msg (str "Must call loadlib-" (:lib lib) " before this function")]
+          msg (str "Must call (loadlib " (:lib lib) ") before this function")]
       (list 'def (with-meta n m)
             (list `fn (vec args) `(throw (Exception. ~msg)))))))
