@@ -70,7 +70,7 @@
                           '~(assoc cbspec
                               :rettype (force (:rettype cbspec))
                               :argtypes (force (:argtypes cbspec)))))
-              ~(make-callback-constructor cbspec)))
+              ~(make-callback-constructor (list 'quote (ns-name *ns*)) cbspec)))
        ;; Main glue class
        (load-code ~clsname
                   (make-native-lib-stub
@@ -112,7 +112,7 @@
     `(do
        (def ~(:lib lib) {:loadfn ~(loadlib-fn lib)})
        ~@(make-struct-stubs (list 'quote (ns-name *ns*)) lib)
-       ~@(make-callback-constructor-stubs lib)
+       ~@(make-callback-stubs (list 'quote (ns-name *ns*)) lib)
        ~@(make-function-stubs lib))))
 
 (defn loadlib

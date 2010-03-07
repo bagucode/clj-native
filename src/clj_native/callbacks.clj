@@ -36,42 +36,22 @@
     (.visitEnd cv)
     (.toByteArray cv)))
 
-(defn make-callback-constructor-stubs
-  "Creates stub functions for callback constructors."
-  [lib]
-  (let [ns (ns-name *ns*)
-        msg (str "Must call loadlib-" (:lib lib) " before this function")]
-    (for [cbspec (:cbs lib)]
-      (let [name (symbol (str "make-" (:name cbspec)))]
-        `(defn ~name
-           ~(str "Creates a new callback proxy object of type\n  "
-                 (:name cbspec) " that will delegate to the supplied clojure\n"
-                 "  function when it is called from native code.\n"
-                 "  The clojure function must take " (count (force (:argtypes cbspec)))
-                 " arguments\n  and return an object"
-                 " of type " (let [t (resolve-type (force (:rettype cbspec)))]
-                               (if (map? t)
-                                 (:name t)
-                                 t)))
-           [~'f] (throw (Exception. ~msg)))))))
+(defn make-callback-stubs
+  [ns lib]
+  (for [cbspec (:cbs lib)]
+    `(intern (or (find-ns ~ns) *ns*) '~(:name cbspec))))
 
 (defn make-callback-constructor
-  "Creates code for creating a constructor
-  function for a given callback."
-  [cbspec]
-  (let [args (take (count (force (:argtypes cbspec))) (repeatedly gensym))
-        ns (ns-name *ns*)
-        name (symbol (str "make-" (:name cbspec)))
-        v (gensym)]
-    `(eval
-      ~(list 'quote
-             `(let [~v (ns-resolve '~ns '~name)]
-                (.bindRoot
-                 ~v
-                 (fn [~'f]
-                   (proxy [~(symbol (:classname cbspec))] []
-                     (~'invoke ~(vec args)
-                               (~'f ~@args))))))))))
+  [ns cbspec]
+  (let [args (take (count (force (:argtypes cbspec))) (repeatedly gensym))]
+    `(intern (or (find-ns ~ns) *ns*) '~(:name cbspec)
+             ~{:construct
+               `(eval
+                 ~(list 'quote
+                        `(fn [~'f]
+                           (proxy [~(symbol (:classname cbspec))] []
+                             (~'invoke ~(vec args)
+                                       (~'f ~@args))))))})))
 
 (defn parse-callbacks
   [cbs user-types]
@@ -92,3 +72,15 @@
         :argtypes (delay (vec (for [a argtypes] (check-type a user-types))))
         :rettype (delay (check-type (or rettype 'void) user-types))
         :classname classname}))))
+
+;;; ***************************************************************************
+;;;
+;;; -----===== Public Interface =====-----
+;;;
+;;; ***************************************************************************
+
+(defn callback
+  "Wraps function f in a callback specified by
+  cb so that it may be passed to C code."
+  [cb f]
+  ((:construct cb) f))
