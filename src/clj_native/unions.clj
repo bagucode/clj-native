@@ -8,26 +8,28 @@
 
 ;;; ***************************************************************************
 ;;;
-;;; -----===== Structs =====-----
+;;; -----===== Unions =====-----
 ;;;
 ;;; ***************************************************************************
 
-(ns clj-native.structs
+(ns clj-native.unions
   (:use [clj-native core])
   (:import [clojure.asm ClassVisitor MethodVisitor ClassWriter Opcodes]
            [java.util UUID]))
 
-(defn make-native-struct
-  "Creates jna classes for representing a C struct
+;;; ye olde stuff
+
+(defn make-native-union
+  "Creates jna classes for representing a C union
   that may be passed by value or reference.
   Returns a vector with 3 items; the bytecode for
-  the specified struct as well as bytecode for inner
+  the specified union as well as bytecode for inner
   classes representing the ByValue and ByReference
-  versions of the struct respectively."
-  [struct-spec]
+  versions of the union respectively."
+  [union-spec]
   (let [#^ClassVisitor cv (ClassWriter. 0)
         replace-dots (fn [#^String s] (.replaceAll s "\\." "/"))
-        internal-name (replace-dots (:classname struct-spec))
+        internal-name (replace-dots (:classname union-spec))
         inner-name (fn [t] (str internal-name "$" t))
         inner (fn [t]
                 (let [#^ClassVisitor cv (ClassWriter. 0)
@@ -63,7 +65,7 @@
                   (.visitEnd cv)
                   (.toByteArray cv)))]
     (.visit cv Opcodes/V1_5 Opcodes/ACC_PUBLIC internal-name
-            nil "com/sun/jna/Structure" (make-array String 0))
+            nil "com/sun/jna/Union" (make-array String 0))
     (.visitInnerClass cv (inner-name 'ByValue) internal-name
                       "ByValue" (+ Opcodes/ACC_PUBLIC Opcodes/ACC_STATIC))
     (.visitInnerClass cv (inner-name 'ByReference) internal-name
@@ -74,11 +76,11 @@
       (.visitCode)
       (.visitVarInsn Opcodes/ALOAD 0)
       (.visitMethodInsn
-       Opcodes/INVOKESPECIAL "com/sun/jna/Structure" "<init>" "()V")
+       Opcodes/INVOKESPECIAL "com/sun/jna/Union" "<init>" "()V")
       (.visitInsn Opcodes/RETURN)
       (.visitMaxs 1 1)
       (.visitEnd))
-    (doseq [field (:fields struct-spec)]
+    (doseq [field (:fields union-spec)]
       (let [{nm :name
              type :type} field]
         (.visitEnd (.visitField cv Opcodes/ACC_PUBLIC (name nm)
@@ -87,43 +89,44 @@
     (.visitEnd cv)
     [(.toByteArray cv) (inner 'ByValue) (inner 'ByReference)]))
 
-(defn make-struct-stubs
+(defn make-union-stubs
   [ns lib]
-  (for [sspec (:structs lib)]
-    `(intern (or (find-ns ~ns) *ns*) '~(:name sspec))))
+  (for [uspec (:unions lib)]
+    `(intern (or (find-ns ~ns) *ns*) '~(:name uspec))))
 
-(defn make-struct-constructors
-  [ns sspec]
+(defn make-union-constructors
+  [ns uspec]
   (let [code (fn [type]
                `(eval
                  ~(list 'quote
                         `(fn
-                           ([] (~(symbol (str (:classname sspec)
+                           ([] (~(symbol (str (:classname uspec)
                                               "$" type "."))))
                            ([alignment#]
-                              (~(symbol (str (:classname sspec)
+                              (~(symbol (str (:classname uspec)
                                              "$" type "."))
                                alignment#))))))]
-    `(intern (or (find-ns ~ns) *ns*) '~(:name sspec)
+    `(intern (or (find-ns ~ns) *ns*) '~(:name uspec)
              ~{:byval (code 'ByValue)
                :byref (code 'ByReference)})))
 
-(defn parse-structs
-  [structs user-types]
+(defn parse-unions
+  [unions user-types]
   (doall
-   (for [s structs]
+   (for [u unions]
      (do
-       (when-not (symbol? (first s))
-         (throw (Exception. (str "Malformed struct spec: " s
+       (when-not (symbol? (first u))
+         (throw (Exception. (str "Malformed union spec: " u
                                  " name must be a symbol."))))
-       (when-not (even? (count (next s)))
-         (throw (Exception. (str "Malformed struct spec: " s
+       (when-not (even? (count (next u)))
+         (throw (Exception. (str "Malformed union spec: " u
                                  " uneven field declarations."))))
-       (let [name (first s)
+       (let [name (first u)
              classname (.replaceAll
-                        (str (ns-name *ns*) \. "struct_" (UUID/randomUUID))
+                        (str (ns-name *ns*) \. "union_" (UUID/randomUUID))
                         "-" "_")
-             fields (apply array-map (next s))]
+             fields (apply array-map (next u))]
+         ;; Treat as structs when checking :kind. They work in the same way
          (swap! user-types assoc name
                 {:name name :classname classname :kind :struct})
          (let [ptrname (symbol (str name "*"))]
@@ -135,25 +138,3 @@
                     {:name (key f)
                      :type (delay (check-type (val f) user-types))})})))))
 
-
-;;; ***************************************************************************
-;;;
-;;; -----===== Public Interface =====-----
-;;;
-;;; ***************************************************************************
-
-(defn byval
-  "Creates a new instance of a structure or union
-  that can be passed by value."
-  ([struct]
-     ((:byval struct)))
-  ([struct alignment]
-     ((:byval struct) alignment)))
-
-(defn byref
-  "Creates a new instance of a structure or union
-  that can be passed by reference."
-  ([struct]
-     ((:byref struct)))
-  ([struct alignment]
-     ((:byref struct) alignment)))

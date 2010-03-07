@@ -19,6 +19,16 @@ typedef struct struct2_struct {
   struct1 s1ByValue;
 } struct2;
 
+typedef struct packed_struct {
+  short s1;
+  short s2;
+} packed __attribute__ ((aligned (1)));
+
+typedef union splitint_union {
+  int the_int;
+  packed p;
+} splitint;
+
 typedef union either_union {
   struct1* s1;
   struct2* s2;
@@ -88,4 +98,16 @@ const char* returnsConstantString()
 const wchar_t* returnsConstantWString()
 {
   return L"This string should be safe to read as const wchar_t*";
+}
+
+splitint addOneToUnionIntByValue(splitint s1)
+{
+  splitint ret;
+  ret.the_int = s1.the_int + 1;
+  return ret;
+}
+
+void addOneToUnionIntByReference(splitint* s1)
+{
+  ++s1->the_int;
 }

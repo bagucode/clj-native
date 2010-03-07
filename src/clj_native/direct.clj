@@ -13,7 +13,7 @@
 ;;; ***************************************************************************
 
 (ns clj-native.direct
-  (:use [clj-native core functions callbacks structs])
+  (:use [clj-native core functions callbacks structs unions])
   (:import [java.util UUID]
            [com.sun.jna Native Library]))
 
@@ -29,12 +29,14 @@
                      (f stuff ut)))
         user-types (atom {})
         structs (when-key :structs parse-structs user-types)
+        unions (when-key :unions parse-unions user-types)
         callbacks (when-key :callbacks parse-callbacks user-types)
         functions (when-key :functions parse-functions user-types)]
     {:lib lib
      :cbs callbacks
      :fns functions
      :structs structs
+     :unions unions
      :pkg (symbol (.replaceAll (str (ns-name *ns*)) "-" "_"))
      :classname (symbol (.replaceAll
                          (str "lib_" (UUID/randomUUID)) "-" "_"))}))
@@ -62,6 +64,18 @@
               (load-code ~(str (:classname sspec) "$ByValue") val#)
               (load-code ~(str (:classname sspec) "$ByReference") ref#)
               ~(make-struct-constructors (list 'quote (ns-name *ns*)) sspec)))
+       ;; Unions
+       ~@(for [uspec (:unions lib)]
+           `(let [[main# val# ref#] (make-native-union
+                                     '~(update-in
+                                        uspec [:fields]
+                                        #(doall
+                                          (for [f %]
+                                            (update-in f [:type] force)))))]
+              (load-code ~(:classname uspec) main#)
+              (load-code ~(str (:classname uspec) "$ByValue") val#)
+              (load-code ~(str (:classname uspec) "$ByReference") ref#)
+              ~(make-union-constructors (list 'quote (ns-name *ns*)) uspec)))
        ;; Callback interfaces and constructors
        ~@(for [cbspec (:cbs lib)]
            `(do
@@ -115,6 +129,7 @@
        ;; They are not strictly needed. Could just require quoted symbols
        ;; as input to constructor functions.
        ~@(make-struct-stubs (list 'quote (ns-name *ns*)) lib)
+       ~@(make-union-stubs (list 'quote (ns-name *ns*)) lib)
        ~@(make-callback-stubs (list 'quote (ns-name *ns*)) lib)
        ~@(make-function-stubs lib))))
 
