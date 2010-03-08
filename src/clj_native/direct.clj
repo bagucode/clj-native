@@ -139,4 +139,13 @@
   [libdef]
   ((:loadfn libdef)))
 
-
+(defn typeof
+  "Returns the java class type of a callback, struct or union.
+  Use the second parameter with :val or :ref to get the java class
+  for a structure or union that is passed by value or reference respectively."
+  ([x] (typeof x nil))
+  ([x pass-style]
+     (condp = pass-style
+       :val (:valclass x)
+       :ref (:refclass x)
+       (:class x))))

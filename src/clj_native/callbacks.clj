@@ -43,13 +43,15 @@
 
 (defn make-callback-constructor
   [ns cbspec]
-  (let [args (take (count (force (:argtypes cbspec))) (repeatedly gensym))]
+  (let [args (take (count (force (:argtypes cbspec))) (repeatedly gensym))
+        clssym (symbol (:classname cbspec))]
     `(intern (or (find-ns ~ns) *ns*) '~(:name cbspec)
-             ~{:construct
+             ~{:class `(eval ~(list 'quote clssym))
+               :construct
                `(eval
                  ~(list 'quote
                         `(fn [~'f]
-                           (proxy [~(symbol (:classname cbspec))] []
+                           (proxy [~clssym] []
                              (~'invoke ~(vec args)
                                        (~'f ~@args))))))})))
 
@@ -84,3 +86,4 @@
   cb so that it may be passed to C code."
   [cb f]
   ((:construct cb) f))
+

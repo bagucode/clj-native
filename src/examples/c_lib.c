@@ -1,11 +1,23 @@
+#ifdef _WIN32
+
+#define EXPORT __declspec(dllexport)
+#define CALLCONV __stdcall
+
+#else
+
+#define EXPORT
+#define CALLCONV
+
+#endif
+
 /*
   #include <stdio.h>
 */
 #include <wchar.h>
 
 /* globals */
-int globalInt = 10;
-const char* globalString = "Hello Globals!";
+EXPORT int globalInt = 10;
+EXPORT const char* globalString = "Hello Globals!";
 
 /* structures and unions */
 typedef struct struct1_struct {
@@ -19,10 +31,19 @@ typedef struct struct2_struct {
   struct1 s1ByValue;
 } struct2;
 
+#ifdef _WIN32
+#pragma pack(push, 1)
+typedef struct packed_struct {
+  short s1;
+  short s2;
+} packed;
+#pragma pack(pop)
+#else // assumes gcc
 typedef struct packed_struct {
   short s1;
   short s2;
 } packed __attribute__ ((aligned (1)));
+#endif
 
 typedef union splitint_union {
   int the_int;
@@ -54,17 +75,17 @@ struct list_struct {
 };
 
 /* functions and callbacks */
-int add(int x, int y) {
+EXPORT int CALLCONV add(int x, int y) {
   return x + y;
 }
 
 typedef int (*add_callback)(int, int);
 
-int call_add_callback(add_callback cb, int x, int y) {
+EXPORT int CALLCONV call_add_callback(add_callback cb, int x, int y) {
   return cb(x, y);
 }
 
-struct2 addOneToStructTwoByValue(struct2 s2)
+EXPORT struct2 CALLCONV addOneToStructTwoByValue(struct2 s2)
 {
   struct2 ret;
   ret.ll = s2.ll + 1;
@@ -74,7 +95,7 @@ struct2 addOneToStructTwoByValue(struct2 s2)
   return ret;
 }
 
-struct1 addOneToStructByValue(struct1 s1)
+EXPORT struct1 CALLCONV addOneToStructByValue(struct1 s1)
 {
   struct1 ret;
   ret.x = s1.x + 1;
@@ -83,31 +104,32 @@ struct1 addOneToStructByValue(struct1 s1)
   return ret;
 }
 
-void addOneToStructByReference(struct1* s1)
+EXPORT void CALLCONV addOneToStructByReference(struct1* s1)
 {
   ++s1->x;
   ++s1->y;
   ++s1->k;
 }
 
-const char* returnsConstantString()
+EXPORT const char* CALLCONV returnsConstantString()
 {
   return "This string should be safe to read as const char*";
 }
 
-const wchar_t* returnsConstantWString()
+EXPORT const wchar_t* CALLCONV returnsConstantWString()
 {
   return L"This string should be safe to read as const wchar_t*";
 }
 
-splitint addOneToUnionIntByValue(splitint s1)
+EXPORT splitint CALLCONV addOneToUnionIntByValue(splitint s1)
 {
   splitint ret;
   ret.the_int = s1.the_int + 1;
   return ret;
 }
 
-void addOneToUnionIntByReference(splitint* s1)
+EXPORT void CALLCONV addOneToUnionIntByReference(splitint* s1)
 {
   ++s1->the_int;
 }
+

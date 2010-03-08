@@ -1,0 +1,12 @@
+EXPORTS
+   _add=add
+   _addOneToStructByReference=addOneToStructByReference
+   _addOneToStructByValue=addOneToStructByValue
+   _addOneToStructTwoByValue=addOneToStructTwoByValue
+   _addOneToUnionIntByReference=addOneToUnionIntByReference
+   _addOneToUnionIntByValue=addOneToUnionIntByValue
+   _call_add_callback=call_add_callback
+   _globalInt=globalInt
+   _globalString=globalString
+   _returnsConstantString=returnsConstantString
+   _returnsConstantWString=returnsConstantWString

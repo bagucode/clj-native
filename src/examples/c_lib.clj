@@ -4,7 +4,7 @@
 
 
 (ns c-lib
-  (:use [clj-native.direct :only [defclib loadlib]]
+  (:use [clj-native.direct :only [defclib loadlib typeof]]
         [clj-native.structs :only [byref byval]]
         [clj-native.callbacks :only [callback]]))
 
@@ -68,20 +68,18 @@
       (println "Passing splitint by value")
       (println (.theint splitintval))
       (let [ret (addOneToUnionIntByValue splitintval)
-            _ (.setType ret Integer/TYPE)
-            intval (. ret theint)
             _ (.readField ret "packed") ;; force read. Should this really be necessary?
+            ;; _ (.setType ret (typeof packed :val)) ;; I wish this forced a read
             s1 (.s1 (.packed ret))
             s2 (.s2 (.packed ret))]
-        (println (str "theint: " intval
-                      " s1: " s1
+        (println (str " s1: " s1
                       ", s2: " s2)))
       (println "Passing splitint by reference")
       (println (.theint splitintref))
       (addOneToUnionIntByReference splitintref)
       (.readField splitintref "packed") ;; force read
-      (println (str "theint: " (.theint splitintref)
-                    " s1: " (.s1 (.packed splitintref))
+      ;; (.setType splitintref (typeof packed :val))
+      (println (str " s1: " (.s1 (.packed splitintref))
                     ", s2: " (.s2 (.packed splitintref))))))
 
 (comment

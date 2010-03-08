@@ -96,18 +96,23 @@
 
 (defn make-union-constructors
   [ns uspec]
-  (let [code (fn [type]
+  (let [class (symbol (:classname uspec))
+        valclass (symbol (str (:classname uspec) "$ByValue"))
+        refclass (symbol (str (:classname uspec) "$ByReference"))
+        code (fn [type]
                `(eval
                  ~(list 'quote
                         `(fn
-                           ([] (~(symbol (str (:classname uspec)
-                                              "$" type "."))))
+                           ([] (~(symbol (str class "$" type "."))))
                            ([alignment#]
-                              (~(symbol (str (:classname uspec)
-                                             "$" type "."))
+                              (~(symbol (str class "$" type "."))
                                alignment#))))))]
     `(intern (or (find-ns ~ns) *ns*) '~(:name uspec)
-             ~{:byval (code 'ByValue)
+             ~{:type :union
+               :class `(eval ~(list 'quote class))
+               :valclass `(eval ~(list 'quote valclass))
+               :refclass `(eval ~(list 'quote refclass))
+               :byval (code 'ByValue)
                :byref (code 'ByReference)})))
 
 (defn parse-unions

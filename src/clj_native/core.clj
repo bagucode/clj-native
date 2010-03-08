@@ -145,5 +145,3 @@
   (for [[i t] (indexed argtypes)]
     (symbol (str (if (map? t) (:name t) t) i))))
 
-
-

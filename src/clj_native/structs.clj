@@ -94,18 +94,23 @@
 
 (defn make-struct-constructors
   [ns sspec]
-  (let [code (fn [type]
+  (let [class (symbol (:classname sspec))
+        valclass (symbol (str (:classname sspec) "$ByValue"))
+        refclass (symbol (str (:classname sspec) "$ByReference"))
+        code (fn [type]
                `(eval
                  ~(list 'quote
                         `(fn
-                           ([] (~(symbol (str (:classname sspec)
-                                              "$" type "."))))
+                           ([] (~(symbol (str class "$" type "."))))
                            ([alignment#]
-                              (~(symbol (str (:classname sspec)
-                                             "$" type "."))
+                              (~(symbol (str class "$" type "."))
                                alignment#))))))]
     `(intern (or (find-ns ~ns) *ns*) '~(:name sspec)
-             ~{:byval (code 'ByValue)
+             ~{:type :struct
+               :class `(eval ~(list 'quote class))
+               :valclass `(eval ~(list 'quote valclass))
+               :refclass `(eval ~(list 'quote refclass))
+               :byval (code 'ByValue)
                :byref (code 'ByReference)})))
 
 (defn parse-structs
