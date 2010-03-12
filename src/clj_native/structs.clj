@@ -13,7 +13,7 @@
 ;;; ***************************************************************************
 
 (ns clj-native.structs
-  (:use [clj-native core])
+  (:use [clj-native direct-util])
   (:import [clojure.asm ClassVisitor MethodVisitor ClassWriter Opcodes]
            [java.util UUID]))
 

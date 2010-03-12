@@ -13,7 +13,7 @@
 ;;; ***************************************************************************
 
 (ns clj-native.callbacks
-  (:use [clj-native core])
+  (:use [clj-native direct-util])
   (:import [clojure.asm ClassVisitor MethodVisitor ClassWriter Opcodes]
            [java.util UUID]))
 

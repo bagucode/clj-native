@@ -13,7 +13,7 @@
 ;;; ***************************************************************************
 
 (ns clj-native.direct
-  (:use [clj-native core functions callbacks structs unions])
+  (:use [clj-native direct-util functions callbacks structs unions])
   (:import [java.util UUID]
            [com.sun.jna Native Library]))
 

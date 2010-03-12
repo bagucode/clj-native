@@ -6,7 +6,7 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any other, from this software.
 
-(ns clj-native.core
+(ns clj-native.direct-util
   (:use [clojure.contrib.seq-utils :only [indexed]])
   (:import [clojure.asm Type]
            [java.nio ByteBuffer IntBuffer CharBuffer

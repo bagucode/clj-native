@@ -13,11 +13,9 @@
 ;;; ***************************************************************************
 
 (ns clj-native.unions
-  (:use [clj-native core])
+  (:use [clj-native direct-util])
   (:import [clojure.asm ClassVisitor MethodVisitor ClassWriter Opcodes]
            [java.util UUID]))
-
-;;; ye olde stuff
 
 (defn make-native-union
   "Creates jna classes for representing a C union
