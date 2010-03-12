@@ -1,23 +1,11 @@
-#ifdef _WIN32
-
-#define EXPORT __declspec(dllexport)
-#define CALLCONV __stdcall
-
-#else
-
-#define EXPORT
-#define CALLCONV
-
-#endif
-
 /*
   #include <stdio.h>
 */
 #include <wchar.h>
 
 /* globals */
-EXPORT int globalInt = 10;
-EXPORT const char* globalString = "Hello Globals!";
+int globalInt = 10;
+const char* globalString = "Hello Globals!";
 
 /* structures and unions */
 typedef struct struct1_struct {
@@ -75,17 +63,17 @@ struct list_struct {
 };
 
 /* functions and callbacks */
-EXPORT int CALLCONV add(int x, int y) {
+int add(int x, int y) {
   return x + y;
 }
 
 typedef int (*add_callback)(int, int);
 
-EXPORT int CALLCONV call_add_callback(add_callback cb, int x, int y) {
+int call_add_callback(add_callback cb, int x, int y) {
   return cb(x, y);
 }
 
-EXPORT struct2 CALLCONV addOneToStructTwoByValue(struct2 s2)
+struct2 addOneToStructTwoByValue(struct2 s2)
 {
   struct2 ret;
   ret.ll = s2.ll + 1;
@@ -95,7 +83,7 @@ EXPORT struct2 CALLCONV addOneToStructTwoByValue(struct2 s2)
   return ret;
 }
 
-EXPORT struct1 CALLCONV addOneToStructByValue(struct1 s1)
+struct1 addOneToStructByValue(struct1 s1)
 {
   struct1 ret;
   ret.x = s1.x + 1;
@@ -104,31 +92,31 @@ EXPORT struct1 CALLCONV addOneToStructByValue(struct1 s1)
   return ret;
 }
 
-EXPORT void CALLCONV addOneToStructByReference(struct1* s1)
+void addOneToStructByReference(struct1* s1)
 {
   ++s1->x;
   ++s1->y;
   ++s1->k;
 }
 
-EXPORT const char* CALLCONV returnsConstantString()
+const char* returnsConstantString()
 {
   return "This string should be safe to read as const char*";
 }
 
-EXPORT const wchar_t* CALLCONV returnsConstantWString()
+const wchar_t* returnsConstantWString()
 {
   return L"This string should be safe to read as const wchar_t*";
 }
 
-EXPORT splitint CALLCONV addOneToUnionIntByValue(splitint s1)
+splitint addOneToUnionIntByValue(splitint s1)
 {
   splitint ret;
   ret.the_int = s1.the_int + 1;
   return ret;
 }
 
-EXPORT void CALLCONV addOneToUnionIntByReference(splitint* s1)
+void addOneToUnionIntByReference(splitint* s1)
 {
   ++s1->the_int;
 }
