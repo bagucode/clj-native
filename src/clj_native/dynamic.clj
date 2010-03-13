@@ -13,8 +13,34 @@
 ;;; ***************************************************************************
 
 (ns clj-native.dynamic
-  (:use [clj-native core])
-  (:import [java.util UUID]
-           [com.sun.jna Native Library]))
+  (:import [com.sun.jna Function]))
 
+(defn #^Function get-function
+  "Obtain a jna Function object representing a native
+  function that follows the standard \"C\" calling convention."
+  [#^String lib-name #^String fn-name]
+  (Function/getFunction lib-name fn-name))
 
+(defn bind-function
+  "Binds a jna Function object to a clojure function."
+  [#^Function jna-fn #^Class return-type]
+  (if (= Void/TYPE return-type)
+    (fn [& args] (.invoke jna-fn (into-array args)))
+    (fn [& args] (.invoke jna-fn return-type (into-array args)))))
+
+(defmacro defcfn
+  "Defines a Clojure function with a variable number of arguments
+  in the current namespace that will delegate to a C function.
+  If no clj-name is supplied the clojure function will have the
+  same name as the C function.
+  Syntax for fn-sym is library/function example: c/printf or m/sin."
+  ([fn-sym return-type]
+     `(defcfn ~fn-sym ~return-type nil))
+  ([fn-sym return-type clj-name]
+     (let [f (gensym "f")]
+       `(let [~f (bind-function
+                  (get-function (namespace '~fn-sym) (name '~fn-sym))
+                  ~return-type)]
+          ~(if clj-name
+             `(intern ~'*ns* '~clj-name ~f)
+             `(intern ~'*ns* (symbol (name '~fn-sym)) ~f))))))
