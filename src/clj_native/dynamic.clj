@@ -13,7 +13,7 @@
 ;;; ***************************************************************************
 
 (ns clj-native.dynamic
-  (:import [com.sun.jna Function]))
+  (:import [com.sun.jna Function NativeLibrary Pointer]))
 
 (defn #^Function get-function
   "Obtain a jna Function object representing a native
@@ -27,6 +27,13 @@
   (if (= Void/TYPE return-type)
     (fn [& args] (.invoke jna-fn (into-array args)))
     (fn [& args] (.invoke jna-fn return-type (into-array args)))))
+
+(defn #^Pointer get-global
+  "Gets a pointer to a global variable in the specified library.
+  Throws UnsatisfiedLinkError if the library or symbol could not be found."
+  [#^String lib-name #^String variable-name]
+  (let [lib #^NativeLibrary (NativeLibrary/getInstance lib-name)]
+    (.getGlobalVariableAddress lib variable-name)))
 
 (defmacro defcfn
   "Defines a Clojure function with a variable number of arguments
@@ -44,3 +51,17 @@
           ~(if clj-name
              `(intern ~'*ns* '~clj-name ~f)
              `(intern ~'*ns* (symbol (name '~fn-sym)) ~f))))))
+
+(defmacro defcvar
+  "Defines a Clojure Var in the current namespace
+  that contains a JNA Pointer object that holds the
+  address of a global C variable."
+  ([variable-sym]
+     `(defcvar ~variable-sym nil))
+  ([variable-sym clj-name]
+     (let [v (gensym "v")]
+       `(let [~v (get-global (namespace '~variable-sym)
+                             (name '~variable-sym))]
+          ~(if clj-name
+             `(intern ~'*ns* '~clj-name ~v)
+             `(intern ~'*ns* (symbol (name '~variable-sym)) ~v))))))
