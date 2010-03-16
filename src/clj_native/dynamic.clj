@@ -19,7 +19,9 @@
   "Obtain a jna Function object representing a native
   function that follows the standard \"C\" calling convention."
   [#^String lib-name #^String fn-name]
-  (Function/getFunction lib-name fn-name))
+  (if lib-name
+    (Function/getFunction lib-name fn-name)
+    (.getFunction #^NativeLibrary (NativeLibrary/getProcess) fn-name)))
 
 (defn bind-function
   "Binds a jna Function object to a clojure function."
@@ -32,7 +34,9 @@
   "Gets a pointer to a global variable in the specified library.
   Throws UnsatisfiedLinkError if the library or symbol could not be found."
   [#^String lib-name #^String variable-name]
-  (let [lib #^NativeLibrary (NativeLibrary/getInstance lib-name)]
+  (let [lib #^NativeLibrary (if lib-name
+                              (NativeLibrary/getInstance lib-name)
+                              (NativeLibrary/getProcess))]
     (.getGlobalVariableAddress lib variable-name)))
 
 (defmacro defcfn
@@ -40,7 +44,9 @@
   in the current namespace that will delegate to a C function.
   If no clj-name is supplied the clojure function will have the
   same name as the C function.
-  Syntax for fn-sym is library/function example: c/printf or m/sin."
+  Syntax for fn-sym is library/function example: c/printf or m/sin.
+  If no library part is supplied then the function lookup
+  will happen in the current process."
   ([fn-sym return-type]
      `(defcfn ~fn-sym ~return-type nil))
   ([fn-sym return-type clj-name]
@@ -55,7 +61,10 @@
 (defmacro defcvar
   "Defines a Clojure Var in the current namespace
   that contains a JNA Pointer object that holds the
-  address of a global C variable."
+  address of a global C variable.
+  Syntax for variable-sym is library/variable example: clib/globalInt
+  If no library part is supplied then the variable lookup
+  will happen in the current process."
   ([variable-sym]
      `(defcvar ~variable-sym nil))
   ([variable-sym clj-name]
