@@ -10,6 +10,7 @@
 
 (defclib
   c_lib
+  ;; (:name alt-name)
   (:structs
    (struct1 :x int :y char :k float)
    (struct2 :ll longlong :s1ByValue struct1)
@@ -34,6 +35,7 @@
 
   (defn main
     []
+    ;; (loadlib alt-name)
     (loadlib c_lib)
     (let [cb (callback add-cb (fn [x y]
                                 (println "in callback!")

@@ -31,11 +31,12 @@
 
 (defn make-native-lib-stub
   "Create the class needed for JNA direct mapping."
-  [lib fn-descriptors & options]
+  [lib clj-name fn-descriptors & options]
   (let [defaults {:pkg (.replaceAll (str (ns-name *ns*)) "-" "_")
-                  :name lib}
+                  :name clj-name
+                  :libname lib}
         opts (merge defaults (apply array-map options))
-        {:keys [pkg name]} opts]
+        {:keys [pkg name libname]} opts]
     (let [#^ClassVisitor cv (ClassWriter. 0)]
       (.visit cv Opcodes/V1_5 Opcodes/ACC_PUBLIC
               (.replaceAll (str pkg \/ name) "\\." "/")
@@ -44,7 +45,7 @@
       (doto #^MethodVisitor (.visitMethod cv Opcodes/ACC_STATIC
                                           "<clinit>" "()V" nil nil)
         (.visitCode)
-        (.visitLdcInsn (if (string? lib) lib (str lib)))
+        (.visitLdcInsn libname)
         (.visitMethodInsn Opcodes/INVOKESTATIC "com/sun/jna/Native"
                           "register" "(Ljava/lang/String;)V")
         (.visitInsn Opcodes/RETURN)
