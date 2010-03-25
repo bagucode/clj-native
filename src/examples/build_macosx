@@ -1,0 +1,3 @@
+#!/bin/sh
+gcc -c -fPIC c_lib.c
+gcc -dynamiclib -current_version 1.0  c_lib.o  -o libc_lib.dylib
