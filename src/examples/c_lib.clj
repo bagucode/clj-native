@@ -9,8 +9,8 @@
         [clj-native.callbacks :only [callback]]))
 
 (defclib
-  c_lib
-  ;; (:name alt-name)
+  my-lib-name ;;  c_lib
+  (:libname "c_lib")
   (:structs
    (struct1 :x int :y char :k float)
    (struct2 :ll longlong :s1ByValue struct1)
@@ -24,7 +24,7 @@
    (add-cb [int int] int))
   (:functions
    (add [int int] int)
-   (call_add_callback call-add-callback [add-cb int int] int)
+   (call-add-callback call_add_callback [add-cb int int] int)
    (addOneToStructByReference [struct1*] struct1*)
    (addOneToStructByValue [struct1] struct1)
    (addOneToStructTwoByValue [struct2] struct2)
@@ -35,8 +35,8 @@
 
   (defn main
     []
-    ;; (loadlib alt-name)
-    (loadlib c_lib)
+    (loadlib my-lib-name)
+    ;; (loadlib c_lib)
     (let [cb (callback add-cb (fn [x y]
                                 (println "in callback!")
                                 (+ x y)))

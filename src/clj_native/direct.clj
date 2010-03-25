@@ -19,23 +19,23 @@
 
 (defn parse-lib
   "Parses input to defclib and returns a library specification map"
-  [lib & body]
-  (when-not (symbol? lib)
-    (throw (Exception. "lib must be a symbol"))) ;; overkill?
+  [name & body]
+  (when-not (symbol? name)
+    (throw (Exception. "name must be a symbol"))) ;; overkill?
   (let [when-key (fn [k f ut]
                    (when-let [stuff (some #(when (= k (first %))
                                              (next %))
                                           body)]
                      (f stuff ut)))
         user-types (atom {})
-        clj-name (or (when-key :name (fn [x & _] (symbol (first x))) nil)
-                     lib)
+        libname (or (when-key :libname (fn [x & _] (str (first x))) nil)
+                    (str name))
         structs (when-key :structs parse-structs user-types)
         unions (when-key :unions parse-unions user-types)
         callbacks (when-key :callbacks parse-callbacks user-types)
         functions (when-key :functions parse-functions user-types)]
-    {:lib lib
-     :clj-name clj-name
+    {:name name
+     :lib libname
      :cbs callbacks
      :fns functions
      :structs structs
@@ -54,7 +54,7 @@
        ;; loading the JNA class because we want to discover the
        ;; error of not finding the library file here rather than
        ;; in the static class initializer.
-       (Native/loadLibrary ~(str (:lib lib)) Library)
+       (Native/loadLibrary ~(:lib lib) Library)
         ;; Structs
        ~@(for [sspec (:structs lib)]
            `(let [[main# val# ref#] (make-native-struct
@@ -91,8 +91,8 @@
        ;; Main glue class
        (load-code ~clsname
                   (make-native-lib-stub
-                   ~(str (:lib lib))
-                   ~(str (:clj-name lib))
+                   ~(:lib lib)
+                   ~(str (:name lib))
                    '~(doall
                       (for [fdef (:fns lib)]
                         (-> (update-in fdef [:argtypes] force)
@@ -128,7 +128,7 @@
   [lib & body]
   (let [lib (apply parse-lib lib body)]
     `(do
-       (def ~(:clj-name lib) {:loadfn ~(loadlib-fn lib)})
+       (def ~(:name lib) {:loadfn ~(loadlib-fn lib)})
        ;; TODO: Remove the stubs for structs and callbacks?
        ;; They are not strictly needed. Could just require quoted symbols
        ;; as input to constructor functions.

@@ -33,10 +33,9 @@
   "Create the class needed for JNA direct mapping."
   [lib clj-name fn-descriptors & options]
   (let [defaults {:pkg (.replaceAll (str (ns-name *ns*)) "-" "_")
-                  :name clj-name
-                  :libname lib}
+                  :name clj-name}
         opts (merge defaults (apply array-map options))
-        {:keys [pkg name libname]} opts]
+        {:keys [pkg name]} opts]
     (let [#^ClassVisitor cv (ClassWriter. 0)]
       (.visit cv Opcodes/V1_5 Opcodes/ACC_PUBLIC
               (.replaceAll (str pkg \/ name) "\\." "/")
@@ -45,7 +44,7 @@
       (doto #^MethodVisitor (.visitMethod cv Opcodes/ACC_STATIC
                                           "<clinit>" "()V" nil nil)
         (.visitCode)
-        (.visitLdcInsn libname)
+        (.visitLdcInsn lib)
         (.visitMethodInsn Opcodes/INVOKESTATIC "com/sun/jna/Native"
                           "register" "(Ljava/lang/String;)V")
         (.visitInsn Opcodes/RETURN)
@@ -69,6 +68,7 @@
       (.toByteArray cv))))
 
 (defn parse-functions
+  "(name docstring? c-name? argvec return-type?)"
   [fns user-types]
   (let [third (fn [coll] (first (next (next coll))))
         drop-until (fn [pred coll] (drop-while #(not (pred %)) coll))]
@@ -76,12 +76,12 @@
      (for [fdef fns]
        (if-not (list? fdef)
          (throw (Exception. (str "invalid function description: " fdef)))
-         (let [name (first fdef)
+         (let [cljname (first fdef)
                doc (when (string? (second fdef)) (second fdef))
-               cljname (cond (symbol? (second fdef)) (second fdef)
-                             (and (string? (second fdef))
-                                  (symbol? (third fdef))) (third fdef)
-                             :else name)
+               name (cond (symbol? (second fdef)) (second fdef)
+                          (and (string? (second fdef))
+                               (symbol? (third fdef))) (third fdef)
+                               :else cljname)
                argvec (first (drop-until #(vector? %) fdef))
                rettype (second (drop-until #(vector? %) fdef))]
            (when-not (symbol? name)
@@ -130,6 +130,6 @@
           ;; m (assoc m :arglists (list 'quote (list (force (:argtypes fdef)))))
           n (:cljname fdef)
           args (argnames (force (:argtypes fdef)))
-          msg (str "Must call (loadlib " (:lib lib) ") before this function")]
+          msg (str "Must call (loadlib " (:name lib) ") before this function")]
       (list 'def (with-meta n m)
             (list `fn (vec args) `(throw (Exception. ~msg)))))))
