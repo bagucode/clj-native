@@ -54,67 +54,68 @@
        ;; loading the JNA class because we want to discover the
        ;; error of not finding the library file here rather than
        ;; in the static class initializer.
-       (Native/loadLibrary ~(:lib lib) Library)
-        ;; Structs
-       ~@(for [sspec (:structs lib)]
-           `(let [[main# val# ref#] (make-native-struct
-                                     '~(update-in
-                                        sspec [:fields]
-                                        #(doall
-                                          (for [f %]
-                                            (update-in f [:type] force)))))]
-              (load-code ~(:classname sspec) main#)
-              (load-code ~(str (:classname sspec) "$ByValue") val#)
-              (load-code ~(str (:classname sspec) "$ByReference") ref#)
-              ~(make-struct-constructors (list 'quote (ns-name *ns*)) sspec)))
-       ;; Unions
-       ~@(for [uspec (:unions lib)]
-           `(let [[main# val# ref#] (make-native-union
-                                     '~(update-in
-                                        uspec [:fields]
-                                        #(doall
-                                          (for [f %]
-                                            (update-in f [:type] force)))))]
-              (load-code ~(:classname uspec) main#)
-              (load-code ~(str (:classname uspec) "$ByValue") val#)
-              (load-code ~(str (:classname uspec) "$ByReference") ref#)
-              ~(make-union-constructors (list 'quote (ns-name *ns*)) uspec)))
-       ;; Callback interfaces and constructors
-       ~@(for [cbspec (:cbs lib)]
-           `(do
-              (load-code ~(:classname cbspec)
-                         (make-callback-interface
-                          '~(assoc cbspec
-                              :rettype (force (:rettype cbspec))
-                              :argtypes (force (:argtypes cbspec)))))
-              ~(make-callback-constructor (list 'quote (ns-name *ns*)) cbspec)))
-       ;; Main glue class
-       (load-code ~clsname
-                  (make-native-lib-stub
-                   ~(:lib lib)
-                   ~(str (:name lib))
-                   '~(doall
-                      (for [fdef (:fns lib)]
-                        (-> (update-in fdef [:argtypes] force)
-                            (update-in [:rettype] force))))
-                   :name '~(:classname lib)
-                   :pkg '~(:pkg lib)))
-       ;; Rebinding of function var roots
-       ;; TODO: move to own function like the others
-       ~@(for [fdef (:fns lib)]
-           (let [native (:name fdef)
-                 name (:cljname fdef)
-                 args (vec (argnames (force (:argtypes fdef))))
-                 ns (ns-name *ns*)
-                 v (gensym)]
-             `(eval
-               ~(list 'quote
-                      (list 'let [v `(ns-resolve '~ns '~name)]
-                            `(.bindRoot
-                              ~v
-                              ~(list `fn args
-                                     (list* (symbol (str clsname \/ native))
-                                            args)))))))))))
+       (let [libobject# (Native/loadLibrary ~(:lib lib) Library)]
+         ;; Structs
+         ~@(for [sspec (:structs lib)]
+             `(let [[main# val# ref#] (make-native-struct
+                                       '~(update-in
+                                          sspec [:fields]
+                                          #(doall
+                                            (for [f %]
+                                              (update-in f [:type] force)))))]
+                (load-code ~(:classname sspec) main#)
+                (load-code ~(str (:classname sspec) "$ByValue") val#)
+                (load-code ~(str (:classname sspec) "$ByReference") ref#)
+                ~(make-struct-constructors (list 'quote (ns-name *ns*)) sspec)))
+         ;; Unions
+         ~@(for [uspec (:unions lib)]
+             `(let [[main# val# ref#] (make-native-union
+                                       '~(update-in
+                                          uspec [:fields]
+                                          #(doall
+                                            (for [f %]
+                                              (update-in f [:type] force)))))]
+                (load-code ~(:classname uspec) main#)
+                (load-code ~(str (:classname uspec) "$ByValue") val#)
+                (load-code ~(str (:classname uspec) "$ByReference") ref#)
+                ~(make-union-constructors (list 'quote (ns-name *ns*)) uspec)))
+         ;; Callback interfaces and constructors
+         ~@(for [cbspec (:cbs lib)]
+             `(do
+                (load-code ~(:classname cbspec)
+                           (make-callback-interface
+                            '~(assoc cbspec
+                                :rettype (force (:rettype cbspec))
+                                :argtypes (force (:argtypes cbspec)))))
+                ~(make-callback-constructor (list 'quote (ns-name *ns*)) cbspec)))
+         ;; Main glue class
+         (load-code ~clsname
+                    (make-native-lib-stub
+                     ~(:lib lib)
+                     ~(str (:name lib))
+                     '~(doall
+                        (for [fdef (:fns lib)]
+                          (-> (update-in fdef [:argtypes] force)
+                              (update-in [:rettype] force))))
+                     :name '~(:classname lib)
+                     :pkg '~(:pkg lib)))
+         ;; Rebinding of function var roots
+         ;; TODO: move to own function like the others
+         ~@(for [fdef (:fns lib)]
+             (let [native (:name fdef)
+                   name (:cljname fdef)
+                   args (vec (argnames (force (:argtypes fdef))))
+                   ns (ns-name *ns*)
+                   v (gensym)]
+               `(eval
+                 ~(list 'quote
+                        (list 'let [v `(ns-resolve '~ns '~name)]
+                              `(.bindRoot
+                                ~v
+                                ~(list `fn args
+                                       (list* (symbol (str clsname \/ native))
+                                              args))))))))
+         libobject#))))
 
 ;;; ***************************************************************************
 ;;;
