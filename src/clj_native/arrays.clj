@@ -10,8 +10,10 @@
   (let [n (inc (count pointers))
         size (* Pointer/SIZE n)
         mem #^Pointer (Memory. size)
-        ptrvec (conj (vec pointers) (Pointer. 0))]
+        ptrseq (if null-terminate?
+                 (conj (vec pointers) (Pointer. 0))
+                 pointers)]
     (.write mem (long 0) #^"[Lcom.sun.jna.Pointer;"
-            (into-array Pointer ptrvec) (int 0) (int n))
+            (into-array Pointer ptrseq) (int 0) (int n))
     mem))
 
