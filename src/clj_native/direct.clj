@@ -57,48 +57,50 @@
        (let [libobject# (Native/loadLibrary ~(:lib lib) Library)]
          ;; Structs
          ~@(for [sspec (:structs lib)]
-             `(let [[main# val# ref#] (make-native-struct
-                                       '~(update-in
-                                          sspec [:fields]
-                                          #(doall
-                                            (for [f %]
-                                              (update-in f [:type] force)))))]
-                (load-code ~(:classname sspec) main#)
-                (load-code ~(str (:classname sspec) "$ByValue") val#)
-                (load-code ~(str (:classname sspec) "$ByReference") ref#)
+             `(let [spec# '~(update-in
+                             sspec [:fields]
+                             #(doall
+                               (for [f %]
+                                 (update-in f [:type] force))))
+                    [main# val# ref#] (make-native-struct spec#)]
+                (load-code ~(:classname sspec) main# spec#)
+                (load-code ~(str (:classname sspec) "$ByValue") val# spec#)
+                (load-code ~(str (:classname sspec) "$ByReference") ref# spec#)
                 ~(make-struct-constructors (list 'quote (ns-name *ns*)) sspec)))
          ;; Unions
          ~@(for [uspec (:unions lib)]
-             `(let [[main# val# ref#] (make-native-union
-                                       '~(update-in
-                                          uspec [:fields]
-                                          #(doall
-                                            (for [f %]
-                                              (update-in f [:type] force)))))]
-                (load-code ~(:classname uspec) main#)
-                (load-code ~(str (:classname uspec) "$ByValue") val#)
-                (load-code ~(str (:classname uspec) "$ByReference") ref#)
+             `(let [spec# '~(update-in
+                             uspec [:fields]
+                             #(doall
+                               (for [f %]
+                                 (update-in f [:type] force))))
+                    [main# val# ref#] (make-native-union spec#)]
+                (load-code ~(:classname uspec) main# spec#)
+                (load-code ~(str (:classname uspec) "$ByValue") val# spec#)
+                (load-code ~(str (:classname uspec) "$ByReference") ref# spec#)
                 ~(make-union-constructors (list 'quote (ns-name *ns*)) uspec)))
          ;; Callback interfaces and constructors
          ~@(for [cbspec (:cbs lib)]
-             `(do
+             `(let [spec# '~(assoc cbspec
+                              :rettype (force (:rettype cbspec))
+                              :argtypes (force (:argtypes cbspec)))]
                 (load-code ~(:classname cbspec)
-                           (make-callback-interface
-                            '~(assoc cbspec
-                                :rettype (force (:rettype cbspec))
-                                :argtypes (force (:argtypes cbspec)))))
-                ~(make-callback-constructor (list 'quote (ns-name *ns*)) cbspec)))
+                           (make-callback-interface spec#) spec#)
+                ~(make-callback-constructor (list 'quote (ns-name *ns*))
+                                            cbspec)))
          ;; Main glue class
-         (load-code ~clsname
-                    (make-native-lib-stub
-                     ~(:lib lib)
-                     ~(str (:name lib))
-                     '~(doall
+         (let [spec# '~(doall
                         (for [fdef (:fns lib)]
                           (-> (update-in fdef [:argtypes] force)
-                              (update-in [:rettype] force))))
-                     :name '~(:classname lib)
-                     :pkg '~(:pkg lib)))
+                              (update-in [:rettype] force))))]
+           (load-code ~clsname
+                      (make-native-lib-stub
+                       ~(:lib lib)
+                       ~(str (:name lib))
+                       spec#
+                       :name '~(:classname lib)
+                       :pkg '~(:pkg lib))
+                      spec#))
          ;; Rebinding of function var roots
          ;; TODO: move to own function like the others
          ~@(for [fdef (:fns lib)]

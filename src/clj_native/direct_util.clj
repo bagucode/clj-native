@@ -30,8 +30,8 @@
 
 (defn load-code
   "Loads bytecode (a class definition) using the root DynamicClassLoader"
-  [#^String classname #^"[B" bytecodes]
-  (.defineClass #^ClassLoader (get-root-loader) classname bytecodes))
+  [#^String classname #^"[B" bytecodes src]
+  (.defineClass (get-root-loader) classname bytecodes src))
 
 ;;; ***************************************************************************
 ;;;
