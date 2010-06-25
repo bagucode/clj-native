@@ -1,4 +1,4 @@
-(defproject clj-native "0.9.0-SNAPSHOT"
+(defproject clj-native "0.9.1-SNAPSHOT"
   :description "Simplify usage of native libs from Clojure. Uses JNA."
   :dependencies [[org.clojure/clojure "1.2.0-master-SNAPSHOT"]
                  [org.clojure/clojure-contrib "1.2.0-SNAPSHOT"]

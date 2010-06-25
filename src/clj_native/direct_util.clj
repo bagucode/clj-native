@@ -19,19 +19,13 @@
 ;;;
 ;;; ***************************************************************************
 
-(defn get-root-loader
-  "Gets the root DynamicClassLoader"
-  []
-  (loop [#^ClassLoader cl (clojure.lang.RT/baseLoader)]
-    (let [parent (.getParent cl)]
-      (if (not= (class parent) clojure.lang.DynamicClassLoader)
-        cl
-        (recur parent)))))
+(def #^{:private true :tag clojure.lang.DynamicClassLoader}
+     loader (clojure.lang.DynamicClassLoader.))
 
 (defn load-code
   "Loads bytecode (a class definition) using the root DynamicClassLoader"
-  [#^String classname #^"[B" bytecodes src]
-  (.defineClass (get-root-loader) classname bytecodes src))
+  [#^String classname #^"[B" bytecode src]
+  (.defineClass loader classname bytecode src))
 
 ;;; ***************************************************************************
 ;;;
