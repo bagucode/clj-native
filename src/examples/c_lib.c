@@ -69,8 +69,23 @@ int add(int x, int y) {
 
 typedef int (*add_callback)(int, int);
 
+struct ReplyAddress {int a; int b;};
+
+typedef void (*reply_callback)(struct ReplyAddress *inReplyAddr, char* inBuf, int inSize);
+
 int call_add_callback(add_callback cb, int x, int y) {
   return cb(x, y);
+}
+
+void* get_ptr(void)
+{
+  char *ptr = malloc((size_t)100);
+  printf("get_ptr is %x\n",ptr);
+  return ptr;
+}
+
+int call_reply_callback(reply_callback cb, struct ReplyAddress *inReplyAddr, char* inBuf, int inSize) {
+ cb(inReplyAddr,inBuf,inSize);
 }
 
 struct2 addOneToStructTwoByValue(struct2 s2)

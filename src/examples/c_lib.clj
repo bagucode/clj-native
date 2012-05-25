@@ -3,7 +3,7 @@
 ;; Must be done before calling loadlib, preferrably on command line
 
 
-(ns c-lib
+(ns examples.c-lib
   (:use [clj-native.direct :only [defclib loadlib typeof]]
         [clj-native.structs :only [byref byval]]
         [clj-native.callbacks :only [callback]]))
@@ -21,10 +21,13 @@
   (:unions
    (splitint :theint int :packed packed))
   (:callbacks
-   (add-cb [int int] int))
+   (add-cb [int int] int)
+   (reply-callback [void* char* i32] void))
   (:functions
    (add [int int] int)
    (call-add-callback call_add_callback [add-cb int int] int)
+   (get-ptr get_ptr [] void*)
+   (call-reply-callback call_reply_callback [reply-callback void* char* i32] void )
    (addOneToStructByReference [struct1*] struct1*)
    (addOneToStructByValue [struct1] struct1)
    (addOneToStructTwoByValue [struct2] struct2)
@@ -40,12 +43,18 @@
     (let [cb (callback add-cb (fn [x y]
                                 (println "in callback!")
                                 (+ x y)))
+          rcb (callback reply-callback
+                        (fn [ptr buf size]
+                                (println "in reply callback! size is " size buf)
+                                ))
+          vptr (get-ptr)
           s1val (byval struct1)
           s1ref (byref struct1)
           s2val (byval struct2)
           ;; set alignment to match the C code (packed)
           splitintval (byval splitint com.sun.jna.Structure/ALIGN_NONE)
           splitintref (byref splitint com.sun.jna.Structure/ALIGN_NONE)]
+      (println "vptr is" vptr)
       (println "Result of add(10, 35):" (add 10 35))
       (println "Result of call_add_callback(cb, 10, 78):"
                (call-add-callback cb 10 78))
@@ -57,6 +66,9 @@
       (println s1ref)
       (println (addOneToStructByReference s1ref))
       (println s1ref)
+      (println "testing reply callback")
+      (println "Result of call_reply_callback():"
+               (call-reply-callback rcb vptr (java.nio.ByteBuffer/allocate 10000) 1))
       (println "Passing struct2 by value")
       (println s2val)
       (println (addOneToStructTwoByValue s2val))
