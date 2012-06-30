@@ -68,6 +68,12 @@
                       "-" "_")]
        (when-not name (except))
        (when-not (and argtypes (vector? argtypes)) (except))
+       (when (some #(and (.endsWith (str %) "*")
+                         (not= (str %) "void*"))
+                   argtypes)
+         (throw (Exception. (str "Malformed callback spec."
+                                 " Only void pointers are allowed as"
+                                 " callback pointer parameters: " cb))))
        (swap! user-types assoc name
               {:name name :classname classname :kind :callback})
        {:name name

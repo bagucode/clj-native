@@ -22,12 +22,15 @@
    (splitint :theint int :packed packed))
   (:callbacks
    (add-cb [int int] int)
-   (reply-callback [void* char* i32] void))
+   (reply-callback [void* void* i32] void)
+   (void-param-callback [void*] void))
   (:functions
    (add [int int] int)
    (call-add-callback call_add_callback [add-cb int int] int)
+   (call-void-param-callback call_void_param_callback [void-param-callback void*] void)
    (get-ptr get_ptr [] void*)
-   (call-reply-callback call_reply_callback [reply-callback void* char* i32] void )
+   (call-reply-callback call_reply_callback [reply-callback void* char* i32] void)
+   (count-bytes count_bytes [char*] long)
    (addOneToStructByReference [struct1*] struct1*)
    (addOneToStructByValue [struct1] struct1)
    (addOneToStructTwoByValue [struct2] struct2)
@@ -45,19 +48,32 @@
                                 (+ x y)))
           rcb (callback reply-callback
                         (fn [ptr buf size]
-                                (println "in reply callback! size is " size buf)
-                                ))
+                          (let [bb (.getByteBuffer buf 0 10000)
+                                n-bytes (count-bytes bb)]
+                            (println "in reply callback! size is " size n-bytes bb))))
+          vcb (callback void-param-callback
+                        (fn [vp]
+                          (println "The pointer is" vp)))
           vptr (get-ptr)
           s1val (byval struct1)
           s1ref (byref struct1)
           s2val (byval struct2)
           ;; set alignment to match the C code (packed)
           splitintval (byval splitint com.sun.jna.Structure/ALIGN_NONE)
-          splitintref (byref splitint com.sun.jna.Structure/ALIGN_NONE)]
+          splitintref (byref splitint com.sun.jna.Structure/ALIGN_NONE)
+          countme (java.nio.ByteBuffer/allocate 10000)]
+      (dotimes [_ 10000] (.put countme (byte 0)))
+      (.rewind countme)
+      (dotimes [_ 100] (.put countme (byte 1)))
+      (.rewind countme)
+      (println "count 100 bytes:" (count-bytes countme))
+      (call-void-param-callback vcb vptr)
       (println "vptr is" vptr)
       (println "Result of add(10, 35):" (add 10 35))
       (println "Result of call_add_callback(cb, 10, 78):"
                (call-add-callback cb 10 78))
+      (println "Result of call_add_callback(cb, 90, 78):"
+               (call-add-callback cb 90 78))
       (println "Passing struct1 by value")
       (println s1val)
       (println (addOneToStructByValue s1val))
@@ -68,7 +84,7 @@
       (println s1ref)
       (println "testing reply callback")
       (println "Result of call_reply_callback():"
-               (call-reply-callback rcb vptr (java.nio.ByteBuffer/allocate 10000) 1))
+               (call-reply-callback rcb vptr countme 1))
       (println "Passing struct2 by value")
       (println s2val)
       (println (addOneToStructTwoByValue s2val))

@@ -1,7 +1,7 @@
-/*
-  #include <stdio.h>
-*/
+#include <stdlib.h>
+#include <stdio.h>
 #include <wchar.h>
+#include <string.h>
 
 /* globals */
 int globalInt = 10;
@@ -67,7 +67,19 @@ int add(int x, int y) {
   return x + y;
 }
 
+size_t count_bytes(unsigned char* buf) {
+  size_t count = 0;
+
+  while(buf[count]) {
+    ++count;
+  }
+
+  return count;
+}
+
 typedef int (*add_callback)(int, int);
+
+typedef void (*void_param_callback)(void* vp);
 
 struct ReplyAddress {int a; int b;};
 
@@ -77,15 +89,24 @@ int call_add_callback(add_callback cb, int x, int y) {
   return cb(x, y);
 }
 
+void call_void_param_callback(void_param_callback cb, void* vp) {
+  cb(vp);
+}
+
 void* get_ptr(void)
 {
   char *ptr = malloc((size_t)100);
-  printf("get_ptr is %x\n",ptr);
+  printf("get_ptr is 0x%p\n",ptr);
   return ptr;
 }
 
-int call_reply_callback(reply_callback cb, struct ReplyAddress *inReplyAddr, char* inBuf, int inSize) {
- cb(inReplyAddr,inBuf,inSize);
+void call_reply_callback(reply_callback cb, struct ReplyAddress *inReplyAddr, char* inBuf, int inSize) {
+
+  printf("cb: 0x%p, inReplyAddr: 0x%p, inBuf: 0x%p, inSize: %d\n", cb, inReplyAddr, inBuf, inSize);
+  
+  printf("***** Calling callback now. *****\n");
+  fflush(stdout);
+  cb(inReplyAddr,inBuf,inSize);
 }
 
 struct2 addOneToStructTwoByValue(struct2 s2)
