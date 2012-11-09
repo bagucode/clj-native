@@ -9,7 +9,8 @@
   (:functions
    (mul [int int] int)
    (and2 [byte byte] byte)
-   (and3 [byte byte byte*] void)))
+   (and3 [byte byte byte*] void)
+   (and3_buf [byte byte byte* int int*] void)))
 
 (println "NOTE: Testing assumes a built test_lib library")
 (System/setProperty "jna.library.path" "./test/clj_native/test")
@@ -40,3 +41,16 @@
        1 0 0
        1 1 1
        ))
+
+(comment
+  Hmmm....
+(deftest test-and3-buf
+  (are [a b z] (= z (let [r (java.nio.ByteBuffer/allocate 1)]
+                      (and3 a b r)
+                      (.get r 0)))
+       0 0 0 0
+       0 1 0
+       1 0 0
+       1 1 1
+       ))
+)
