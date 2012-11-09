@@ -1,4 +1,4 @@
-(ns clj-native.test.c_lib
+(ns clj-native.test.c-lib
   (:use [clj-native.direct :only [defclib loadlib typeof]]
         [clj-native.structs :only [byref byval]]
         [clj-native.callbacks :only [callback]]
@@ -52,7 +52,7 @@
        ))
 
 ;; ======================================================================
-;; TODO -- move everything mentioned below into straightforward tests
+;; TODO -- move everything mentioned below into deftest routines
 
 (comment
   (defn main
