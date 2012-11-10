@@ -6,11 +6,15 @@
 
 (defclib test_lib
   (:libname "test_lib")
+  (:structs
+   (n-buf
+    :n int
+    :buf int*))
   (:functions
    (mul [int int] int)
    (and2 [byte byte] byte)
    (and3 [byte byte byte*] void)
-   (and3_buf [byte byte byte* int int*] void)))
+   (and3_buf [byte byte byte* int n-buf*] void)))
 
 (println "NOTE: Testing assumes a built test_lib library")
 (System/setProperty "jna.library.path" "./test/clj_native/test")
@@ -42,15 +46,18 @@
        1 1 1
        ))
 
-(comment
-  Hmmm....
+;; This is trying to be a close match for overtone/src/overtone/sc/machinery/server/native.clj:scsynth-get-buffer-data
+;; It is currently failing.
 (deftest test-and3-buf
-  (are [a b z] (= z (let [r (java.nio.ByteBuffer/allocate 1)]
-                      (and3 a b r)
-                      (.get r 0)))
-       0 0 0 0
-       0 1 0
-       1 0 0
-       1 1 1
+  (are [a b z n] (= [(apply vector (range n)) n z]
+                    (let [r (java.nio.ByteBuffer/allocate 1)
+                          nbr (byref n-buf)]
+                      (and3_buf a b r n nbr)
+                      (vector
+                       ;;???(:buf n-buf);;(apply vector (for [i (range n)] (.get ri)))
+                       (:n nbr)
+                       (.get r 0))))
+       1 1 1 4
+       0 0 0 3
        ))
-)
+
