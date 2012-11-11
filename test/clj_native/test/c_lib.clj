@@ -4,8 +4,10 @@
         [clj-native.callbacks :only [callback]]
         [clojure.test]))
 
-;; moving the example into a test structure.  
+;; The code from src/examples/c_lib.clj has been morphed into a test
+;; structure to get some coverage of a variety of issues.
 
+;; ======================================================================
 (defclib c_lib
   (:libname "c_lib")
   (:structs
@@ -36,32 +38,113 @@
    (addOneToUnionIntByValue [splitint] splitint)
    (addOneToUnionIntByReference [splitint*])))
 
-;; IMPORTANT!
-;; (System/setProperty "jna.library.path" "your/lib/path/here")
 ;; Must be done before calling loadlib, preferrably on command line
 (println "NOTE: Testing assumes a built src/examples/c_lib library")
 (System/setProperty "jna.library.path" "./src/examples")
 (loadlib c_lib)
 
+;; ======================================================================
 (deftest test-add
   (are [a b z] (= z (add a b))
-       1 1 (+ 1 1)
-       100 -10 (+ 100 -10)
-       65535 10 (+ 65535 10)
-       10000000 10 (+ 10000000 10)
+       10 35 (+ 10 35)
        ))
+
+(deftest test-countme
+  (let [countme (java.nio.ByteBuffer/allocate 10000)
+        _ (dotimes [_ 10000] (.put countme (byte 0)))
+        _ (.rewind countme)
+        _ (dotimes [_ 100] (.put countme (byte 1)))
+        _ (.rewind countme)
+        r (count-bytes countme)]
+    (is (= r 100))))
+
+(deftest test-callback1
+  (let [cb (callback add-cb (fn [x y]
+                              (println "in callback!")
+                              (+ x y)))]
+    (is (+ 10 78) (call-add-callback cb 10 78))
+    (is (+ 90 78) (call-add-callback cb 90 78))))
+
+(deftest test-pass-by-val
+  (let [s1val (byval struct1)
+        _ (is (= 0 (.x s1val)))
+        _ (is (= 0 (.y s1val)))
+        _ (is (= 0.0 (.k s1val)))
+        s1valres (addOneToStructByValue s1val)
+        _ (is (= 0 (.x s1val)))
+        _ (is (= 0 (.y s1val)))
+        _ (is (= 0.0 (.k s1val)))
+        _ (is (= 1 (.x s1valres)))
+        _ (is (= 1 (.y s1valres)))
+        _ (is (= 1.0 (.k s1valres)))
+        s1valres2 (addOneToStructByValue s1val)]
+    (is (= 0 (.x s1val)))
+    (is (= 0 (.y s1val)))
+    (is (= 0.0 (.k s1val)))
+    (is (= 1 (.x s1valres)))
+    (is (= 1 (.y s1valres)))
+    (is (= 1.0 (.k s1valres)))
+    ))
+
+(deftest test-pass-by-ref
+  (let [s1ref (byref struct1)
+        _ (is (= 0 (.x s1ref)))
+        _ (is (= 0 (.y s1ref)))
+        _ (is (= 0.0 (.k s1ref)))
+        s1refres (addOneToStructByReference s1ref)
+        _ (is (= 1 (.x s1ref)))
+        _ (is (= 1 (.y s1ref)))
+        _ (is (= 1.0 (.k s1ref)))
+        _ (is (= 1 (.x s1refres)))
+        _ (is (= 1 (.y s1refres)))
+        _ (is (= 1.0 (.k s1refres)))
+        s1refres2 (addOneToStructByReference s1ref)]
+    (is (= 2 (.x s1ref)))
+    (is (= 2 (.y s1ref)))
+    (is (= 2.0 (.k s1ref)))
+    (is (= 2 (.x s1refres2)))
+    (is (= 2 (.y s1refres2)))
+    (is (= 2.0 (.k s1refres2)))
+    ))
+
+(deftest test-pass-by-val2
+  (let [s2val (byval struct2)
+        s2valres (addOneToStructTwoByValue s2val)]
+    (is (= 0 (.ll s2val)))
+    (is (= 0 (.x (.s1ByValue s2val))))
+    (is (= 0 (.y (.s1ByValue s2val))))
+    (is (= 0.0 (.k (.s1ByValue s2val))))
+    (is (= 1 (.ll s2valres)))
+    (is (= 1 (.x (.s1ByValue s2valres))))
+    (is (= 1 (.y (.s1ByValue s2valres))))
+    (is (= 1.0 (.k (.s1ByValue s2valres))))
+    ))
+
+(deftest test-string
+  (is (= "This string should be safe to read as const char*"
+         (returnsConstantString)))
+  )
+
+;; FIXME!
+(deftest test-wstring
+  (is (= "This string should be safe to read as const wchar_t*"
+         (returnsConstantWString)))
+  )
+
+
 
 ;; ======================================================================
 ;; TODO -- move everything mentioned below into deftest routines
-
-(comment
-  (defn main
-    []
-    (loadlib my-lib-name)
-    ;; (loadlib c_lib)
-    (let [cb (callback add-cb (fn [x y]
-                                (println "in callback!")
-                                (+ x y)))
+;; use the ; X at the end of the line to mark bits that now have tests
+;; eventually, delete all this...
+(comment                                                                ; X
+  (defn main                                                            ; X
+    []                                                                  ; X
+    (loadlib my-lib-name)                                               ; X
+    ;; (loadlib c_lib)                                                  ; X
+    (let [cb (callback add-cb (fn [x y]                                 ; X
+                                (println "in callback!")                ; X
+                                (+ x y)))                               ; X
           rcb (callback reply-callback
                         (fn [ptr buf size]
                           (let [bb (.getByteBuffer buf 0 10000)
@@ -71,42 +154,42 @@
                         (fn [vp]
                           (println "The pointer is" vp)))
           vptr (get-ptr)
-          s1val (byval struct1)
-          s1ref (byref struct1)
-          s2val (byval struct2)
+          s1val (byval struct1)                                         ; X
+          s1ref (byref struct1)                                         ; X
+          s2val (byval struct2)                                         ; X
           ;; set alignment to match the C code (packed)
           splitintval (byval splitint com.sun.jna.Structure/ALIGN_NONE)
           splitintref (byref splitint com.sun.jna.Structure/ALIGN_NONE)
-          countme (java.nio.ByteBuffer/allocate 10000)]
-      (dotimes [_ 10000] (.put countme (byte 0)))
-      (.rewind countme)
-      (dotimes [_ 100] (.put countme (byte 1)))
-      (.rewind countme)
-      (println "count 100 bytes:" (count-bytes countme))
+          countme (java.nio.ByteBuffer/allocate 10000)]                 ; X
+      (dotimes [_ 10000] (.put countme (byte 0)))                       ; X
+      (.rewind countme)                                                 ; X
+      (dotimes [_ 100] (.put countme (byte 1)))                         ; X
+      (.rewind countme)                                                 ; X
+      (println "count 100 bytes:" (count-bytes countme))                ; X
       (call-void-param-callback vcb vptr)
       (println "vptr is" vptr)
-      (println "Result of add(10, 35):" (add 10 35))
-      (println "Result of call_add_callback(cb, 10, 78):"
-               (call-add-callback cb 10 78))
-      (println "Result of call_add_callback(cb, 90, 78):"
-               (call-add-callback cb 90 78))
-      (println "Passing struct1 by value")
-      (println s1val)
-      (println (addOneToStructByValue s1val))
-      (println s1val)
-      (println "Passing struct1 by reference")
-      (println s1ref)
-      (println (addOneToStructByReference s1ref))
-      (println s1ref)
+      (println "Result of add(10, 35):" (add 10 35))                    ; X
+      (println "Result of call_add_callback(cb, 10, 78):"               ; X
+               (call-add-callback cb 10 78))                            ; X
+      (println "Result of call_add_callback(cb, 90, 78):"               ; X
+               (call-add-callback cb 90 78))                            ; X
+      (println "Passing struct1 by value")                              ; X
+      (println s1val)                                                   ; X
+      (println (addOneToStructByValue s1val))                           ; X
+      (println s1val)                                                   ; X
+      (println "Passing struct1 by reference")                          ; X
+      (println s1ref)                                                   ; X
+      (println (addOneToStructByReference s1ref))                       ; X
+      (println s1ref)                                                   ; X
       (println "testing reply callback")
       (println "Result of call_reply_callback():"
                (call-reply-callback rcb vptr countme 1))
-      (println "Passing struct2 by value")
-      (println s2val)
-      (println (addOneToStructTwoByValue s2val))
-      (println s2val)
-      (println (returnsConstantString))
-      (println (returnsConstantWString))
+      (println "Passing struct2 by value")                              ; X
+      (println s2val)                                                   ; X
+      (println (addOneToStructTwoByValue s2val))                        ; X
+      (println s2val)                                                   ; X
+      (println (returnsConstantString))                                 ; X
+      (println (returnsConstantWString))                                ; X
       (.setType splitintval Integer/TYPE)
       (set! (.theint splitintval) 66000)
       (.setType splitintref Integer/TYPE)
