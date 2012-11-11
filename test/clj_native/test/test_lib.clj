@@ -9,7 +9,7 @@
   (:structs
    (n-buf
     :n int
-    :buf int*))
+    :buf void*))
   (:functions
    (mul [int int] int)
    (and2 [byte byte] byte)
@@ -46,16 +46,16 @@
        1 1 1
        ))
 
-;; This is trying to be a close match for overtone/src/overtone/sc/machinery/server/native.clj:scsynth-get-buffer-data
-;; It is currently failing.
+;; This is trying to be a close match for
+;; overtone/src/overtone/sc/machinery/server/native.clj:scsynth-get-buffer-data
 (deftest test-and3-buf
   (are [a b z n] (= [(apply vector (range n)) n z]
                     (let [r (java.nio.ByteBuffer/allocate 1)
                           nbr (byref n-buf)]
                       (and3_buf a b r n nbr)
                       (vector
-                       ;;???(:buf n-buf);;(apply vector (for [i (range n)] (.get ri)))
-                       (:n nbr)
+                       (apply vector (for [i (range n)] (.getInt (.buf nbr) (* 4 i))))
+                       (.n nbr)
                        (.get r 0))))
        1 1 1 4
        0 0 0 3
