@@ -1,2 +1,0 @@
-cl /c /TC c_lib.c
-link /dll /OUT:c_lib.dll /def:c_lib.def c_lib.obj

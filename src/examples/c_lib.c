@@ -3,9 +3,15 @@
 #include <wchar.h>
 #include <string.h>
 
+#ifndef _WIN32
+  #define EXPORT
+#else
+  #define EXPORT __declspec(dllexport)
+#endif
+
 /* globals */
-int globalInt = 10;
-const char* globalString = "Hello Globals!";
+EXPORT int globalInt = 10;
+EXPORT const char* globalString = "Hello Globals!";
 
 /* structures and unions */
 typedef struct struct1_struct {
@@ -63,11 +69,11 @@ struct list_struct {
 };
 
 /* functions and callbacks */
-int add(int x, int y) {
+EXPORT int add(int x, int y) {
   return x + y;
 }
 
-size_t count_bytes(unsigned char* buf) {
+EXPORT size_t count_bytes(unsigned char* buf) {
   size_t count = 0;
 
   while(buf[count]) {
@@ -85,22 +91,22 @@ struct ReplyAddress {int a; int b;};
 
 typedef void (*reply_callback)(struct ReplyAddress *inReplyAddr, char* inBuf, int inSize);
 
-int call_add_callback(add_callback cb, int x, int y) {
+EXPORT int call_add_callback(add_callback cb, int x, int y) {
   return cb(x, y);
 }
 
-void call_void_param_callback(void_param_callback cb, void* vp) {
+EXPORT void call_void_param_callback(void_param_callback cb, void* vp) {
   cb(vp);
 }
 
-void* get_ptr(void)
+EXPORT void* get_ptr(void)
 {
   char *ptr = malloc((size_t)100);
   printf("get_ptr is 0x%p\n",ptr);
   return ptr;
 }
 
-void call_reply_callback(reply_callback cb, struct ReplyAddress *inReplyAddr, char* inBuf, int inSize) {
+EXPORT void call_reply_callback(reply_callback cb, struct ReplyAddress *inReplyAddr, char* inBuf, int inSize) {
 
   printf("cb: 0x%p, inReplyAddr: 0x%p, inBuf: 0x%p, inSize: %d\n", cb, inReplyAddr, inBuf, inSize);
   
@@ -109,7 +115,7 @@ void call_reply_callback(reply_callback cb, struct ReplyAddress *inReplyAddr, ch
   cb(inReplyAddr,inBuf,inSize);
 }
 
-struct2 addOneToStructTwoByValue(struct2 s2)
+EXPORT struct2 addOneToStructTwoByValue(struct2 s2)
 {
   struct2 ret;
   ret.ll = s2.ll + 1;
@@ -119,7 +125,7 @@ struct2 addOneToStructTwoByValue(struct2 s2)
   return ret;
 }
 
-struct1 addOneToStructByValue(struct1 s1)
+EXPORT struct1 addOneToStructByValue(struct1 s1)
 {
   struct1 ret;
   ret.x = s1.x + 1;
@@ -128,31 +134,31 @@ struct1 addOneToStructByValue(struct1 s1)
   return ret;
 }
 
-void addOneToStructByReference(struct1* s1)
+EXPORT void addOneToStructByReference(struct1* s1)
 {
   ++s1->x;
   ++s1->y;
   ++s1->k;
 }
 
-const char* returnsConstantString()
+EXPORT const char* returnsConstantString()
 {
   return "This string should be safe to read as const char*";
 }
 
-const wchar_t* returnsConstantWString()
+EXPORT const wchar_t* returnsConstantWString()
 {
   return L"This string should be safe to read as const wchar_t*";
 }
 
-splitint addOneToUnionIntByValue(splitint s1)
+EXPORT splitint addOneToUnionIntByValue(splitint s1)
 {
   splitint ret;
   ret.the_int = s1.the_int + 1;
   return ret;
 }
 
-void addOneToUnionIntByReference(splitint* s1)
+EXPORT void addOneToUnionIntByReference(splitint* s1)
 {
   ++s1->the_int;
 }

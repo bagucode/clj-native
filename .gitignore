@@ -1,0 +1,7 @@
+.lein-failures
+*.dll
+*.o
+*.obj
+*.lib
+*.exp
+target
