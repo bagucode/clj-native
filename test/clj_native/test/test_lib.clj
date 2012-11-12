@@ -4,6 +4,10 @@
         [clj-native.callbacks :only [callback]]
         [clojure.test]))
 
+;; added test cases to help resolve an issue that was plaguing the Overtone project.
+;; See discussion here: https://groups.google.com/forum/?fromgroups=#!topic/overtone/wrlzi3dNhr0
+;; Feel free to add new functions/tests as issues pop up.
+
 (defclib test_lib
   (:libname "test_lib")
   (:structs
@@ -16,7 +20,7 @@
    (and3 [byte byte byte*] void)
    (and3_buf [byte byte byte* int n-buf*] void)))
 
-(println "NOTE: Testing assumes a built test_lib library")
+(println "NOTE: Testing assumes a built test/clj_native/test/test_lib library")
 (System/setProperty "jna.library.path" "./test/clj_native/test")
 (loadlib test_lib)
 

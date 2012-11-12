@@ -5,7 +5,8 @@
         [clojure.test]))
 
 ;; The code from src/examples/c_lib.clj has been morphed into a test
-;; structure to get some coverage of a variety of issues.
+;; structure to get some coverage of a variety of issues.  There are a
+;; few FIXME issues below to clean up.
 
 ;; ======================================================================
 (defclib c_lib
@@ -125,91 +126,57 @@
          (returnsConstantString)))
   )
 
-;; FIXME!
-(comment probably better to have tests pass...
+;; FIXME! what is a wstring in clojure?
+(comment out this so tests pass
 (deftest test-wstring
   (is (= "This string should be safe to read as const wchar_t*"
          (returnsConstantWString)))
   )
 )
 
+(deftest test-void-param-callback
+  (let [vcb (callback void-param-callback
+                      (fn [vp]
+                        (println "The pointer is" vp)))
+        vptr (get-ptr)]
+    (call-void-param-callback vcb vptr)
+    (is (= 1 1)))) ;; FIXME better assert?
 
-;; ======================================================================
-;; TODO -- move everything mentioned below into deftest routines
-;; use the ; X at the end of the line to mark bits that now have tests
-;; eventually, delete all this...
-(comment                                                                ; X
-  (defn main                                                            ; X
-    []                                                                  ; X
-    (loadlib my-lib-name)                                               ; X
-    ;; (loadlib c_lib)                                                  ; X
-    (let [cb (callback add-cb (fn [x y]                                 ; X
-                                (println "in callback!")                ; X
-                                (+ x y)))                               ; X
-          rcb (callback reply-callback
-                        (fn [ptr buf size]
-                          (let [bb (.getByteBuffer buf 0 10000)
-                                n-bytes (count-bytes bb)]
-                            (println "in reply callback! size is " size n-bytes bb))))
-          vcb (callback void-param-callback
-                        (fn [vp]
-                          (println "The pointer is" vp)))
-          vptr (get-ptr)
-          s1val (byval struct1)                                         ; X
-          s1ref (byref struct1)                                         ; X
-          s2val (byval struct2)                                         ; X
-          ;; set alignment to match the C code (packed)
-          splitintval (byval splitint com.sun.jna.Structure/ALIGN_NONE)
-          splitintref (byref splitint com.sun.jna.Structure/ALIGN_NONE)
-          countme (java.nio.ByteBuffer/allocate 10000)]                 ; X
-      (dotimes [_ 10000] (.put countme (byte 0)))                       ; X
-      (.rewind countme)                                                 ; X
-      (dotimes [_ 100] (.put countme (byte 1)))                         ; X
-      (.rewind countme)                                                 ; X
-      (println "count 100 bytes:" (count-bytes countme))                ; X
-      (call-void-param-callback vcb vptr)
-      (println "vptr is" vptr)
-      (println "Result of add(10, 35):" (add 10 35))                    ; X
-      (println "Result of call_add_callback(cb, 10, 78):"               ; X
-               (call-add-callback cb 10 78))                            ; X
-      (println "Result of call_add_callback(cb, 90, 78):"               ; X
-               (call-add-callback cb 90 78))                            ; X
-      (println "Passing struct1 by value")                              ; X
-      (println s1val)                                                   ; X
-      (println (addOneToStructByValue s1val))                           ; X
-      (println s1val)                                                   ; X
-      (println "Passing struct1 by reference")                          ; X
-      (println s1ref)                                                   ; X
-      (println (addOneToStructByReference s1ref))                       ; X
-      (println s1ref)                                                   ; X
-      (println "testing reply callback")
-      (println "Result of call_reply_callback():"
-               (call-reply-callback rcb vptr countme 1))
-      (println "Passing struct2 by value")                              ; X
-      (println s2val)                                                   ; X
-      (println (addOneToStructTwoByValue s2val))                        ; X
-      (println s2val)                                                   ; X
-      (println (returnsConstantString))                                 ; X
-      (println (returnsConstantWString))                                ; X
-      (.setType splitintval Integer/TYPE)
-      (set! (.theint splitintval) 66000)
-      (.setType splitintref Integer/TYPE)
-      (set! (.theint splitintref) 66000)
-      (println "Passing splitint by value")
-      (println (.theint splitintval))
-      (let [ret (addOneToUnionIntByValue splitintval)
-            _ (.readField ret "packed") ;; force read. Should this really be necessary?
-            ;; _ (.setType ret (typeof packed :val)) ;; I wish this forced a read
-            s1 (.s1 (.packed ret))
-            s2 (.s2 (.packed ret))]
-        (println (str " s1: " s1
-                      ", s2: " s2)))
-      (println "Passing splitint by reference")
-      (println (.theint splitintref))
-      (addOneToUnionIntByReference splitintref)
-      (.readField splitintref "packed") ;; force read
-      ;; (.setType splitintref (typeof packed :val))
-      (println (str " s1: " (.s1 (.packed splitintref))
-                    ", s2: " (.s2 (.packed splitintref))))))
-  )
+(deftest test-reply-callback
+  (let [rcb (callback reply-callback
+                      (fn [ptr buf size]
+                        (let [bb (.getByteBuffer buf 0 10000)
+                              n-bytes (count-bytes bb)]
+                          (println "in reply callback! size is " size n-bytes bb))))
+        vptr (get-ptr)
+        countme (java.nio.ByteBuffer/allocate 10000)
+        _ (dotimes [_ 10000] (.put countme (byte 0)))
+        _ (.rewind countme)
+        _ (dotimes [_ 100] (.put countme (byte 1)))
+        _ (.rewind countme)]
+    (is (= nil (call-reply-callback rcb vptr countme 1)))))  ;; FIXME better assert?
 
+(deftest test-splitint
+  (let [splitintval (byval splitint com.sun.jna.Structure/ALIGN_NONE)
+        splitintref (byref splitint com.sun.jna.Structure/ALIGN_NONE)]
+    (.setType splitintval Integer/TYPE)
+    (set! (.theint splitintval) 66000)
+    (.setType splitintref Integer/TYPE)
+    (set! (.theint splitintref) 66000)
+    ;;(println "Passing splitint by value")
+    (is (= 66000 (.theint splitintval)))
+    (let [ret (addOneToUnionIntByValue splitintval)
+          _ (.readField ret "packed") ;; force read. Should this really be necessary?
+          ;; _ (.setType ret (typeof packed :val)) ;; I wish this forced a read
+          s1 (.s1 (.packed ret))
+          s2 (.s2 (.packed ret))]
+      (is (= 465 s1)) ;; ??? FIXME Sorry, don't understand this.
+      (is (= 1 s2)))  ;; ??? FIXME Sorry, don't understand this.
+    ;;(println "Passing splitint by reference")
+    (is (= 66000 (.theint splitintref)))
+    (addOneToUnionIntByReference splitintref)
+    (.readField splitintref "packed") ;; force read
+    ;; (.setType splitintref (typeof packed :val))
+    (is (= 465 (.s1 (.packed splitintref)))) ;; ??? FIXME Sorry, don't understand this.
+    (is (= 1 (.s2 (.packed splitintref))))  ;; ??? FIXME Sorry, don't understand this.
+    ))
