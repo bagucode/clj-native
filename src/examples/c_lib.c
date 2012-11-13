@@ -101,17 +101,10 @@ EXPORT void call_void_param_callback(void_param_callback cb, void* vp) {
 
 EXPORT void* get_ptr(void)
 {
-  char *ptr = malloc((size_t)100);
-  printf("get_ptr is 0x%p\n",ptr);
-  return ptr;
+  return malloc((size_t)100);
 }
 
 EXPORT void call_reply_callback(reply_callback cb, struct ReplyAddress *inReplyAddr, char* inBuf, int inSize) {
-
-  printf("cb: 0x%p, inReplyAddr: 0x%p, inBuf: 0x%p, inSize: %d\n", cb, inReplyAddr, inBuf, inSize);
-  
-  printf("***** Calling callback now. *****\n");
-  fflush(stdout);
   cb(inReplyAddr,inBuf,inSize);
 }
 

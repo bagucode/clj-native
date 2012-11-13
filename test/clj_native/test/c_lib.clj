@@ -61,7 +61,6 @@
 
 (deftest test-callback1
   (let [cb (callback add-cb (fn [x y]
-                              (println "in callback!")
                               (+ x y)))]
     (is (+ 10 78) (call-add-callback cb 10 78))
     (is (+ 90 78) (call-add-callback cb 90 78))))
@@ -126,57 +125,66 @@
          (returnsConstantString)))
   )
 
-;; FIXME! what is a wstring in clojure?
-(comment out this so tests pass
+;; WString is just a way to explicitly pass UTF-16 strings back and forth
+;; between C and Java (wchar_t*)
 (deftest test-wstring
   (is (= "This string should be safe to read as const wchar_t*"
-         (returnsConstantWString)))
-  )
-)
+         (.toString (returnsConstantWString)))))
+
 
 (deftest test-void-param-callback
-  (let [vcb (callback void-param-callback
+  (let [check (atom nil)
+        vcb (callback void-param-callback
                       (fn [vp]
-                        (println "The pointer is" vp)))
+                        (reset! check vp)))
         vptr (get-ptr)]
     (call-void-param-callback vcb vptr)
-    (is (= 1 1)))) ;; FIXME better assert?
+    (is (= @check vptr))))
 
 (deftest test-reply-callback
-  (let [rcb (callback reply-callback
+  (let [check (atom nil)
+        rcb (callback reply-callback
                       (fn [ptr buf size]
                         (let [bb (.getByteBuffer buf 0 10000)
                               n-bytes (count-bytes bb)]
-                          (println "in reply callback! size is " size n-bytes bb))))
+                          (reset! check n-bytes))))
         vptr (get-ptr)
         countme (java.nio.ByteBuffer/allocate 10000)
         _ (dotimes [_ 10000] (.put countme (byte 0)))
         _ (.rewind countme)
         _ (dotimes [_ 100] (.put countme (byte 1)))
         _ (.rewind countme)]
-    (is (= nil (call-reply-callback rcb vptr countme 1)))))  ;; FIXME better assert?
+    (call-reply-callback rcb vptr countme 1)
+    (is (= @check 100))))
 
 (deftest test-splitint
   (let [splitintval (byval splitint com.sun.jna.Structure/ALIGN_NONE)
         splitintref (byref splitint com.sun.jna.Structure/ALIGN_NONE)]
+    ;; Tell JNA which part of the union to use
     (.setType splitintval Integer/TYPE)
+    ;; Set the integer part of the union to 66000. This puts the decimal
+    ;; number 464 in the low 16 bits and the number 1 in the high 16 bits.
     (set! (.theint splitintval) 66000)
     (.setType splitintref Integer/TYPE)
     (set! (.theint splitintref) 66000)
-    ;;(println "Passing splitint by value")
     (is (= 66000 (.theint splitintval)))
+    ;; Call a C function that adds one to the int part of the union
     (let [ret (addOneToUnionIntByValue splitintval)
+
           _ (.readField ret "packed") ;; force read. Should this really be necessary?
           ;; _ (.setType ret (typeof packed :val)) ;; I wish this forced a read
+
+          ;; Read the union as a struct of two shorts.
           s1 (.s1 (.packed ret))
           s2 (.s2 (.packed ret))]
-      (is (= 465 s1)) ;; ??? FIXME Sorry, don't understand this.
-      (is (= 1 s2)))  ;; ??? FIXME Sorry, don't understand this.
-    ;;(println "Passing splitint by reference")
+      ;; After the call to the C function, the first (low) short should
+      ;; have the value 465 and the second (high) should have the value 1
+      (is (= 465 s1))
+      (is (= 1 s2)))
+    ;; Same test as above but pass the union by reference
     (is (= 66000 (.theint splitintref)))
     (addOneToUnionIntByReference splitintref)
     (.readField splitintref "packed") ;; force read
     ;; (.setType splitintref (typeof packed :val))
-    (is (= 465 (.s1 (.packed splitintref)))) ;; ??? FIXME Sorry, don't understand this.
-    (is (= 1 (.s2 (.packed splitintref))))  ;; ??? FIXME Sorry, don't understand this.
-    ))
+    (is (= 465 (.s1 (.packed splitintref))))
+    (is (= 1 (.s2 (.packed splitintref))))))
