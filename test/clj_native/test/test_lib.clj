@@ -13,12 +13,17 @@
   (:structs
    (n-buf
     :n int
-    :buf void*))
+    :buf void*)
+   (point
+    :x int
+    :y int
+    :name constchar*))
   (:functions
    (mul [int int] int)
    (and2 [byte byte] byte)
    (and3 [byte byte byte*] void)
-   (and3_buf [byte byte byte* int n-buf*] void)))
+   (and3_buf [byte byte byte* int n-buf*] void)
+   (static_point [int int] point*)))
 
 (println "NOTE: Testing assumes a built test/clj_native/test/test_lib library")
 (System/setProperty "jna.library.path" "./test/clj_native/test")
@@ -64,4 +69,21 @@
        1 1 1 4
        0 0 0 3
        ))
+
+;; This was motivated by the Pm_GetDeviceInfo function from Portmidi,
+;; which has the signature:
+;;
+;; PMEXPORT const PmDeviceInfo* Pm_GetDeviceInfo( PmDeviceID id );
+;;
+;; The memory pointed to is owned by Portmidi and is not to be
+;; freed. A static variable has this property, so is a similar
+;; use-case.
+(deftest test-point
+  (are [x y x' y'] (let [thepoint (static_point x y)]
+                     (and
+                      (= x' (.x thepoint))
+                      (= y' (.y thepoint))
+                      (= "foo" (.name thepoint))))
+       1 2 1 2
+       -1 -4 -1 -4))
 

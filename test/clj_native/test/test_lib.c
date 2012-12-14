@@ -46,3 +46,17 @@ EXPORT void and3_buf(bool x, bool y, bool *z, int n, NBuf *pb) {
         *p++ = i;
     }
 }
+
+typedef struct {
+    int x;
+    int y;
+    const char * name;
+} Point;
+
+EXPORT Point *static_point(int x, int y) {
+    static Point point;
+    point.x = x;
+    point.y = y;
+    point.name = "foo";
+    return &point;
+}
