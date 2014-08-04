@@ -1,4 +1,4 @@
-(defproject clj-native "0.9.3"
+(defproject clj-native "0.9.4"
   :description "Simplify usage of native libs from Clojure. Uses JNA."
-  :dependencies [[org.clojure/clojure "1.4.0"]
-                 [net.java.dev.jna/jna "3.4.0"]])
+  :dependencies [[org.clojure/clojure "1.6.0"]
+                 [net.java.dev.jna/jna "4.1.0"]])

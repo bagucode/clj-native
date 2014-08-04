@@ -78,12 +78,28 @@
       (.visitInsn Opcodes/RETURN)
       (.visitMaxs 1 1)
       (.visitEnd))
-    (doseq [field (:fields struct-spec)]
-      (let [{nm :name
-             type :type} field]
-        (.visitEnd (.visitField cv Opcodes/ACC_PUBLIC (name nm)
-                                (descriptor (resolve-type type))
-                                nil nil))))
+    (let [mv (doto #^MethodVisitor
+               (.visitMethod cv Opcodes/ACC_PROTECTED "getFieldOrder" "()Ljava/util/List;" nil nil)
+               (.visitCode)
+               (.visitTypeInsn Opcodes/NEW "java/util/ArrayList")
+               (.visitInsn Opcodes/DUP)
+               (.visitMethodInsn
+                Opcodes/INVOKESPECIAL "java/util/ArrayList" "<init>" "()V"))]
+      (doseq [field (:fields struct-spec)]
+        (let [{nm :name
+               type :type} field]
+          (.visitEnd (.visitField cv Opcodes/ACC_PUBLIC (name nm)
+                                  (descriptor (resolve-type type))
+                                  nil nil))
+          (doto #^MethodVisitor mv
+                (.visitInsn Opcodes/DUP)
+                (.visitLdcInsn (name nm))
+                (.visitMethodInsn
+                 Opcodes/INVOKEVIRTUAL "java/util/ArrayList" "add" "(Ljava/lang/Object;)Z")
+                (.visitInsn Opcodes/POP))))
+      (.visitInsn mv Opcodes/ARETURN)
+      (.visitMaxs mv 3 1)
+      (.visitEnd mv))
     (.visitEnd cv)
     [(.toByteArray cv) (inner 'ByValue) (inner 'ByReference)]))
 
