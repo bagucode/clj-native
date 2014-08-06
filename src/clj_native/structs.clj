@@ -144,7 +144,7 @@
              classname (.replaceAll
                         (str (ns-name *ns*) \. "struct_" (UUID/randomUUID))
                         "-" "_")
-             fields (apply array-map (next s))]
+             fields (partition 2 (next s))]
          (swap! user-types assoc name
                 {:name name :classname classname :kind :struct})
          (let [ptrname (symbol (str name "*"))]
@@ -152,9 +152,9 @@
                   {:name ptrname :classname classname :kind :struct}))
          {:name name
           :classname classname
-          :fields (for [f fields]
-                    {:name (key f)
-                     :type (delay (check-type (val f) user-types))})})))))
+          :fields (for [[k v] fields]
+                    {:name k
+                     :type (delay (check-type v user-types))})})))))
 
 
 ;;; ***************************************************************************
